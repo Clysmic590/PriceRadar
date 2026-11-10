@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -81,6 +82,7 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
     LaunchedEffect(shared) { if (shared.isNotBlank()) { url = shared; adding = true; consumed() } }
     fun refresh() { scope.launch { busy = true; try { repo.refresh(context) } finally { busy = false } } }
     val product = products.find { it.id == selected }
+    BackHandler(enabled = selected != null) { selected = null }
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(if (product == null) "PriceRadar" else "Product radar", fontWeight = FontWeight.Bold) },

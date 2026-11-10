@@ -32,7 +32,11 @@ Every push, pull request or manual **Actions → Android debug APK → Run workf
 | Vexio | Same public structured-data extractor | Real pages, stock/variant changes, HTML price formatting, coupon/reference selectors and request behavior |
 | Altex | Same public structured-data extractor | JavaScript-rendered offers, stock/variant changes, promotions, coupon/reference selectors and request behavior |
 
-All three integrations are experimental and **have not passed end-to-end retailer validation**. Unit tests use synthetic HTML fixtures, not captured retailer pages. They validate extraction logic only. Requests do not execute JavaScript, authenticate, follow redirects, or bypass CAPTCHA. A retailer can reject or change its HTML; the app reports failure rather than making up a price. No official retailer API partnership is claimed. Check retailer terms before broader use.
+All three integrations are experimental and **have not passed end-to-end retailer validation**. Unit tests use synthetic HTML fixtures plus a minimal eMAG structured-offer fixture captured during development (product title shortened; descriptive content removed). They validate extraction logic only. Requests do not execute JavaScript, authenticate, follow redirects, or bypass CAPTCHA. A retailer can reject or change its HTML; the app reports failure rather than making up a price. No official retailer API partnership is claimed. Check retailer terms before broader use.
+
+Development smoke check: a direct public request to a Vexio Sony WH1000XM5B product URL returned HTTP 403 on November 10, 2026. This confirms an access limitation in this environment, not successful price extraction. Other networks/devices can behave differently.
+
+The eMAG sample `/pd/DFHWK8MBM/` returned HTTP 200 with a RON JSON-LD Offer compatible with the parser. This single-page smoke check does not verify marketplace variants, coupons or continued access. An Altex sample did not complete during the development request and remains unverified.
 
 Notifications and background scheduling still need on-device Android 17 testing, including denied permission, reboot, Doze, process death, and target crossings. WorkManager is periodic and best effort, not real time. Shipping, personal offers and checkout-only discounts are excluded. Fake-discount results are limited by sparse local history and detected reference-price markup.
 

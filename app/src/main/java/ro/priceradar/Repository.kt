@@ -60,7 +60,9 @@ class Repository private constructor(context: Context) {
                 val drop = p.dropAlerts && old != null && listing.price < old
                 val target = p.target
                 val crossed = p.targetAlerts && target != null && listing.price <= target && (old == null || old > target)
-                if (drop || crossed) Alerts.show(context, p.id, listing.name, if (crossed) "Target reached: ${money(listing.price)}" else "Price dropped to ${money(listing.price)}")
+                if (drop || crossed) runCatching {
+                    Alerts.show(context, p.id, listing.name, if (crossed) "Target reached: ${money(listing.price)}" else "Price dropped to ${money(listing.price)}")
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 success = false; save(p.copy(error = e.message ?: "Refresh failed", checked = System.currentTimeMillis()))

@@ -23,7 +23,7 @@ class RetailerClient {
             when (value) {
                 is JSONArray -> for (i in 0 until value.length()) visit(value.opt(i))
                 is JSONObject -> {
-                    val types = value.opt("@type").toString()
+                    val types = value.opt("@type")?.toString().orEmpty()
                     if (types.contains("Product")) products.add(value)
                     value.keys().forEach { key -> if (key == "@graph" || key == "mainEntity") visit(value.opt(key)) }
                 }

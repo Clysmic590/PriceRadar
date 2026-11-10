@@ -28,6 +28,7 @@ enum class Period(val label: String, val duration: Duration) {
 }
 fun money(bani: Long) = "%,.2f RON".format(java.util.Locale.US, bani / 100.0)
 fun parseMoney(value: String): Long? {
+    if (value.contains('-')) return null
     var s = value.replace(Regex("[^0-9,.]"), "")
     if (s.isEmpty()) return null
     if (s.contains(',') && s.contains('.')) {

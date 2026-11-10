@@ -5,12 +5,19 @@ import org.junit.Test
 import org.jsoup.Jsoup
 
 class PriceLogicTest {
+    @Test fun observedEmagStructuredOffer() {
+        val html = javaClass.getResource("/emag-observed.html")!!.readText()
+        val result = RetailerClient().parse(Jsoup.parse(html), "https://www.emag.ro/pd/DFHWK8MBM/")
+        assertEquals(119999L, result.price)
+        assertEquals("Sony WH-1000XM5L", result.name)
+    }
     @Test fun romanianAndStructuredPrices() {
         assertEquals(123456L, parseMoney("1.234,56 lei"))
         assertEquals(123456L, parseMoney("1234.56"))
         assertEquals(123400L, parseMoney("1.234"))
         assertNull(parseMoney("unavailable"))
         assertNull(parseMoney("0"))
+        assertNull(parseMoney("-100"))
     }
     @Test fun rejectsUntrustedLinks() {
         listOf("http://emag.ro/p", "https://emag.ro.evil.com/p", "https://user@emag.ro/p", "https://altex.ro:8080/p").forEach {
