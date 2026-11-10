@@ -13,6 +13,8 @@ Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Ta
 
 Existing watchlists migrate automatically: absent pause and threshold fields default to active tracking and any-drop alerts. Live retailer limitations below still apply. New document-picker, notification-navigation and pause controls require device testing.
 
+Starting with 1.1, debug builds use the repository's **public development-only signing key**, so future debug APK updates can retain app data. Never use this key for a production release. The original 1.0 APK used a temporary CI key: Android may require uninstalling that version before installing 1.1, which clears its local watchlist/history. Schema migration preserves data only when installing with a matching signing key.
+
 ## Features
 - Track HTTPS product links from eMAG, Vexio and Altex, including Android Share-sheet import.
 - Local SQLite persistence, manual refresh and approximate six-hour WorkManager checks.
