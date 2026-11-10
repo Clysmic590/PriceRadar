@@ -2,7 +2,7 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
-## New in 1.1
+## New in 1.1.5
 - Saved Original, One UI-inspired and ColorOS-inspired themes in Settings, with gentle navigation, refresh, watchlist and chart animations.
 - Notification status follows Android app/category settings; refresh feedback dismisses automatically (respecting accessibility timeout preferences).
 - Search by product or retailer and sort by recently checked, price, name or proximity to target.
