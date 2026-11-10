@@ -71,19 +71,14 @@ class MainActivity : ComponentActivity() {
         openedProduct = intent.getStringExtra("product_id")
         Alerts.schedule(this)
         setContent {
-            val preferences = remember { getSharedPreferences("appearance", MODE_PRIVATE) }
-            var theme by remember { mutableStateOf(AppTheme.entries.firstOrNull { it.name == preferences.getString("theme", null) } ?: AppTheme.RADAR) }
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = theme == AppTheme.COLOR_OS
-                    isAppearanceLightNavigationBars = theme == AppTheme.COLOR_OS
+                    isAppearanceLightStatusBars = false
+                    isAppearanceLightNavigationBars = false
                 }
             }
-            RadarTheme(theme) {
-                PriceRadar(shared, openedProduct, { openedProduct = null }, theme, { chosen ->
-                    theme = chosen
-                    preferences.edit().putString("theme", chosen.name).apply()
-                }) { shared = "" }
+            RadarTheme {
+                PriceRadar(shared, openedProduct, { openedProduct = null }) { shared = "" }
             }
         }
     }
@@ -93,7 +88,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, theme: AppTheme, changeTheme: (AppTheme) -> Unit, consumed: () -> Unit) {
+fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consumed: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { Repository.get(context) }
     val products by repo.products.collectAsStateWithLifecycle()
@@ -201,18 +196,6 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, theme
                     item { Text("Your radar, your rules", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
                     item { OutlinedButton(onClick = { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Export price history (CSV)") } }
                     item { Text("Export includes product links, UTC timestamps, observed prices and targets. Choose where to save it.", style = MaterialTheme.typography.bodySmall) }
-                    item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Appearance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Choose your radar's look. Your choice is saved on this device.")
-                        AppTheme.entries.forEach { option ->
-                            Surface(onClick = { changeTheme(option) }, shape = MaterialTheme.shapes.medium, color = if (theme == option) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface) {
-                                Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(selected = theme == option, onClick = null)
-                                    Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(option.label, fontWeight = FontWeight.Bold); Text(option.description, style = MaterialTheme.typography.bodySmall) }
-                                }
-                            }
-                        }
-                    } } }
                     item { InfoCard("Background checks", "Prices are checked approximately every 6 hours with an internet connection. Android battery management can delay checks. Open the app and tap refresh for an immediate check.") }
                     item { Text(if (notificationsEnabled) "Notifications enabled" else "Notifications disabled · allow notifications and the Price alerts category in Android settings") }
                     item { Button(onClick = {

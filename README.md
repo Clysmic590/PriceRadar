@@ -2,8 +2,8 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
-## New in 1.1.5
-- Saved Original, One UI-inspired and ColorOS-inspired themes in Settings, with gentle navigation, refresh, watchlist and chart animations.
+## New in 1.1.6
+- One UI-inspired dark appearance for every install, with rounded panels, blue accents and gentle navigation, refresh, watchlist and chart animations. The theme picker has been removed; existing theme preferences no longer apply.
 - Notification status follows Android app/category settings; refresh feedback dismisses automatically (respecting accessibility timeout preferences).
 - Search by product or retailer and sort by recently checked, price, name or proximity to target.
 - Pause/resume individual products while keeping observations and alert settings.
@@ -63,7 +63,8 @@ Notifications and background scheduling still need on-device Android 17 testing,
 5. Test offline, HTTP errors, redirects and challenge pages; ensure no new price point is inserted.
 6. Collect seven observed days before assessing suspicious reference prices. Verify that old prices outside the 30-day window do not affect the result.
 7. In Settings, allow notifications and verify the status changes to "Notifications enabled" and the button to "Notification settings". Send a test notification and verify the confirmation and delivered notification. Disable app notifications or the Price alerts category in Android settings, then return to the app and verify the status updates. Re-enable them and return again. On Android 13+, also deny the permission request and verify the button provides access to Android settings, including after repeated denial.
-8. Switch between Original, One UI and ColorOS in Settings. Verify text, charts, dialogs and controls remain readable; restart and rotate to verify the theme persists. Confirm refresh feedback clears after about six seconds (or the Android accessibility timeout), and repeat a refresh. Check the refresh spin, navigation bounce, watchlist rearrangement and chart reveal with Android animation scales enabled and disabled.
+8. Verify the One UI-inspired dark appearance on a fresh install and an update from 1.1.5 (including devices that previously selected Original or ColorOS). Verify the theme picker is absent, text and controls remain readable, and the appearance survives restart/rotation. Confirm refresh feedback clears after about six seconds (or the Android accessibility timeout), and repeat a refresh. Check animations with Android animation scales enabled and disabled.
+
 
 ## Structure
 `MainActivity.kt` contains Compose screens; `Repository.kt` owns persistent state; `RetailerClient.kt` extracts public listings; `Models.kt` contains price and discount rules; `Alerts.kt` owns notifications and scheduled work. No API credentials are required or committed.
