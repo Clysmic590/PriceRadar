@@ -17,7 +17,10 @@ object Alerts {
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("prices", "Price alerts", NotificationManager.IMPORTANCE_DEFAULT))
-        val intent = PendingIntent.getActivity(context, id.hashCode(), Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val launch = Intent(context, MainActivity::class.java).putExtra("product_id", id)
+            .setData(android.net.Uri.parse("priceradar://product/$id"))
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val intent = PendingIntent.getActivity(context, id.hashCode(), launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         manager.notify(id.hashCode(), NotificationCompat.Builder(context, "prices").setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentTitle(title).setContentText(text).setContentIntent(intent).setAutoCancel(true).build())
     }

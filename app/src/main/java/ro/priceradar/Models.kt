@@ -20,8 +20,39 @@ data class Product(
     val history: List<Observation> = emptyList(), val target: Long? = null,
     val reference: Long? = null, val coupons: List<String> = emptyList(),
     val error: String? = null, val checked: Long = 0,
-    val dropAlerts: Boolean = true, val targetAlerts: Boolean = true
+    val dropAlerts: Boolean = true, val targetAlerts: Boolean = true,
+    val paused: Boolean = false, val minimumDropPercent: Int = 0
 ) { val price: Long? get() = history.lastOrNull()?.price }
+enum class WatchSort(val label: String) { RECENT("Recently checked"), PRICE("Lowest price"), NAME("Name"), TARGET("Near target") }
+fun watchlist(products: List<Product>, query: String, retailer: String, sort: WatchSort): List<Product> {
+    val filtered = products.filter { (retailer == "All" || it.retailer.label == retailer) && (it.name.contains(query.trim(), true) || it.retailer.label.contains(query.trim(), true)) }
+    return when (sort) {
+        WatchSort.RECENT -> filtered.sortedByDescending { it.checked }
+        WatchSort.PRICE -> filtered.sortedBy { it.price ?: Long.MAX_VALUE }
+        WatchSort.NAME -> filtered.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+        WatchSort.TARGET -> filtered.sortedBy { p -> if (p.price != null && p.target != null) p.price!!.toDouble() / p.target else Double.MAX_VALUE }
+    }
+}
+fun alertReason(p: Product, next: Long): String? {
+    if (p.paused) return null
+    val old = p.price
+    if (p.targetAlerts && p.target != null && next <= p.target && (old == null || old > p.target)) return "Target reached: ${money(next)}"
+    if (p.dropAlerts && old != null && next < old && (old - next).toDouble() / old * 100 + 0.000001 >= p.minimumDropPercent) return "Price dropped to ${money(next)}"
+    return null
+}
+fun historyCsv(products: List<Product>): String {
+    fun cell(value: String): String {
+        val safe = if (value.trimStart().firstOrNull() in listOf('=', '+', '-', '@')) "'" + value else value
+        return "\"${safe.replace("\"", "\"\"")}\""
+    }
+    return buildString {
+        append("product,retailer,url,observed_at_utc,price_ron,target_ron\r\n")
+        products.forEach { p -> p.history.forEach { o ->
+            append(listOf(p.name, p.retailer.label, p.url, java.time.Instant.ofEpochMilli(o.time).toString(), java.math.BigDecimal.valueOf(o.price, 2).toPlainString(), p.target?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()).joinToString(",") { cell(it) })
+            append("\r\n")
+        } }
+    }
+}
 enum class Period(val label: String, val duration: Duration) {
     DAY("1 day", Duration.ofDays(1)), WEEK("7 days", Duration.ofDays(7)),
     MONTH("1 month", Duration.ofDays(30)), YEAR("1 year", Duration.ofDays(365))

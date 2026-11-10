@@ -2,6 +2,17 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
+## New in 1.1
+- Search by product or retailer and sort by recently checked, price, name or proximity to target.
+- Pause/resume individual products while keeping observations and alert settings.
+- Refresh only the open product; the watchlist refresh checks all active products.
+- Set a minimum drop threshold from 0–50% to reduce noisy alerts. Target crossings remain independent of this threshold.
+- Tap a notification to open its product, including when the app is already running.
+- Export all observed history as CSV through Android's document picker, with exact RON amounts and UTC timestamps. CSV is a history export, not a restorable backup.
+- See target progress and refresh feedback in the interface.
+
+Existing watchlists migrate automatically: absent pause and threshold fields default to active tracking and any-drop alerts. Live retailer limitations below still apply. New document-picker, notification-navigation and pause controls require device testing.
+
 ## Features
 - Track HTTPS product links from eMAG, Vexio and Altex, including Android Share-sheet import.
 - Local SQLite persistence, manual refresh and approximate six-hour WorkManager checks.

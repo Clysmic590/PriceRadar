@@ -49,24 +49,26 @@ private val Panel = Color(0xFF1B211A)
 
 class MainActivity : ComponentActivity() {
     private var shared by mutableStateOf("")
+    private var openedProduct by mutableStateOf<String?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         shared = sharedUrl(intent)
+        openedProduct = intent.getStringExtra("product_id")
         Alerts.schedule(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Mint, onPrimary = Ink, background = Ink, surface = Panel, secondary = Color(0xFFA2C3EE))) {
-                PriceRadar(shared) { shared = "" }
+                PriceRadar(shared, openedProduct, { openedProduct = null }) { shared = "" }
             }
         }
     }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); shared = sharedUrl(intent) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); shared = sharedUrl(intent); openedProduct = intent.getStringExtra("product_id") }
     private fun sharedUrl(intent: Intent) = if (intent.action == Intent.ACTION_SEND) Regex("https://[^\\s]+").find(intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())?.value.orEmpty() else ""
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PriceRadar(shared: String, consumed: () -> Unit) {
+fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consumed: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { Repository.get(context) }
     val products by repo.products.collectAsStateWithLifecycle()
@@ -78,9 +80,24 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf(0) }
     var filter by rememberSaveable { mutableStateOf("All") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var sort by rememberSaveable { mutableStateOf(WatchSort.RECENT) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { destination ->
+        if (destination != null) scope.launch {
+            notice = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(destination)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(historyCsv(repo.products.value)) }
+                        ?: error("Could not open destination")
+                }
+                "History exported"
+            } catch (e: Exception) { "Export failed: ${e.message}" }
+        }
+    }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(shared) { if (shared.isNotBlank()) { url = shared; adding = true; consumed() } }
-    fun refresh() { scope.launch { busy = true; try { repo.refresh(context) } finally { busy = false } } }
+    LaunchedEffect(openedProduct) { if (openedProduct != null) { selected = openedProduct.takeIf { id -> products.any { it.id == id } }; opened() } }
+    fun refresh(id: String? = selected) { scope.launch { busy = true; try { val ok = repo.refresh(context, id); notice = if (ok) "Check complete" else "Some checks failed · see product details" } finally { busy = false } } }
     val product = products.find { it.id == selected }
     BackHandler(enabled = selected != null) { selected = null }
     Scaffold(
@@ -99,9 +116,11 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            notice?.let { message -> Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) { Text(message, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall); TextButton(onClick = { notice = null }) { Text("Dismiss") } } }
             if (product != null) {
                 ProductDetail(product,
-                    save = { target, drops, targets -> scope.launch { repo.settings(product.id, target, drops, targets) } },
+                    save = { target, drops, targets, minimum -> scope.launch { repo.settings(product.id, target, drops, targets, minimum) } },
+                    pause = { value -> scope.launch { repo.pause(product.id, value) } },
                     remove = { scope.launch { repo.remove(product.id); selected = null } })
             } else when (tab) {
                 0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -118,8 +137,12 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
                         (listOf("All") + Retailer.entries.map { it.label }).forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
                     } }
                     item { Text("Your watchlist", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    item { OutlinedTextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search products") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }) }
+                    item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchSort.entries.forEach { option -> FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.label) }) } } }
                     if (products.isEmpty()) item { InfoCard("Your next great deal starts here", "Paste a product link from eMAG, Vexio or Altex. Price history starts with the first successful check.") }
-                    items(products.filter { filter == "All" || it.retailer.label == filter }, key = { it.id }) { p -> ProductCard(p) { selected = p.id } }
+                    val visible = watchlist(products, query, filter, sort)
+                    if (products.isNotEmpty() && visible.isEmpty()) item { Text("No matching products. Try another search or retailer.") }
+                    items(visible, key = { it.id }) { p -> ProductCard(p) { selected = p.id } }
                 }
                 1 -> LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Text("Coupon radar", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
@@ -130,6 +153,8 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
                 }
                 else -> LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Text("Your radar, your rules", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+                    item { OutlinedButton(onClick = { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Export price history (CSV)") } }
+                    item { Text("Export includes product links, UTC timestamps, observed prices and targets. Choose where to save it.", style = MaterialTheme.typography.bodySmall) }
                     item { InfoCard("Background checks", "Prices are checked approximately every 6 hours with an internet connection. Android battery management can delay checks. Open the app and tap refresh for an immediate check.") }
                     item { Button(onClick = { if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else Alerts.show(context, "test", "PriceRadar", "Notifications are ready") }) { Text("Enable notifications") } }
                     item { OutlinedButton(onClick = { Alerts.show(context, "test", "PriceRadar", "Your price radar is ready") }) { Text("Send test notification") } }
@@ -144,7 +169,7 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
         Text("Paste an HTTPS product link from eMAG, Vexio or Altex.")
         OutlinedTextField(url, onValueChange = { url = it; error = null }, label = { Text("Product URL") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), isError = error != null)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    } }, confirmButton = { TextButton(onClick = { scope.launch { try { val id = repo.add(url); adding = false; url = ""; selected = id; refresh() } catch (e: Exception) { error = e.message } } }) { Text("Start tracking") } }, dismissButton = { TextButton(onClick = { adding = false; error = null }) { Text("Cancel") } })
+    } }, confirmButton = { TextButton(onClick = { scope.launch { try { val id = repo.add(url); adding = false; url = ""; selected = id; refresh(id) } catch (e: Exception) { error = e.message } } }) { Text("Start tracking") } }, dismissButton = { TextButton(onClick = { adding = false; error = null }) { Text("Cancel") } })
 }
 
 @Composable private fun Stat(value: String, label: String, modifier: Modifier) {
@@ -157,6 +182,7 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
     Card(onClick = open, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(p.retailer.label.uppercase(), color = Mint, style = MaterialTheme.typography.labelMedium); if (p.coupons.isNotEmpty()) Text("Coupon detected", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium) }
         Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+        if (p.paused) Text("Tracking paused", color = MaterialTheme.colorScheme.secondary)
         Text(p.price?.let(::money) ?: "Waiting for first check", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         p.target?.let { Text("Target ${money(it)}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (p.error != null) Text("Check failed · tap for details", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
@@ -165,17 +191,20 @@ fun PriceRadar(shared: String, consumed: () -> Unit) {
 }
 private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(time))
 
-@Composable private fun ProductDetail(p: Product, save: (Long?, Boolean, Boolean) -> Unit, remove: () -> Unit) {
+@Composable private fun ProductDetail(p: Product, save: (Long?, Boolean, Boolean, Int) -> Unit, pause: (Boolean) -> Unit, remove: () -> Unit) {
     var period by rememberSaveable { mutableStateOf(Period.WEEK) }
     var targetText by rememberSaveable(p.id, p.target) { mutableStateOf(p.target?.let { "%.2f".format(Locale.US, it / 100.0) }.orEmpty()) }
     var drops by rememberSaveable(p.id, p.dropAlerts) { mutableStateOf(p.dropAlerts) }
     var targets by rememberSaveable(p.id, p.targetAlerts) { mutableStateOf(p.targetAlerts) }
+    var minimum by rememberSaveable(p.id, p.minimumDropPercent) { mutableStateOf(p.minimumDropPercent.toFloat()) }
     var saved by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
     val points = p.history.filter { it.time >= System.currentTimeMillis() - period.duration.toMillis() }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { Text(p.retailer.label, color = Mint); Text(p.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(top = 16.dp)) }
+        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold); Text("Pause keeps your history and skips checks and alerts", style = MaterialTheme.typography.bodySmall) }; Switch(!p.paused, { pause(!it) }) } }
+        p.price?.let { price -> p.target?.let { target -> item { InfoCard("Target progress", if (price <= target) "Your target is met · ${money(target - price)} below target" else "${money(price - target)} to go · target ${money(target)}") } } }
         p.error?.let { item { InfoCard("Last check failed", "$it\nLast successful price is preserved.") } }
         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Period.entries.forEach { option -> FilterChip(selected = period == option, onClick = { period = option }, label = { Text(option.label) }) } } }
         item { Card { Column(Modifier.padding(20.dp)) {
@@ -189,9 +218,11 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
         item { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Your alerts", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             OutlinedTextField(targetText, onValueChange = { targetText = it; saved = false }, label = { Text("Target price in RON (optional)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = targetText.isNotBlank() && parseMoney(targetText) == null)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Notify on any price drop", Modifier.weight(1f)); Switch(drops, { drops = it; saved = false }) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Price-drop notifications", Modifier.weight(1f)); Switch(drops, { drops = it; saved = false }) }
+            Text(if (minimum.toInt() == 0) "Alert for any drop" else "Minimum drop: ${minimum.toInt()}% since the previous check")
+            Slider(value = minimum, onValueChange = { minimum = it; saved = false }, valueRange = 0f..50f, steps = 49, enabled = drops)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Notify when target is reached", Modifier.weight(1f)); Switch(targets, { targets = it; saved = false }) }
-            Button(onClick = { save(targetText.takeIf { it.isNotBlank() }?.let(::parseMoney), drops, targets); saved = true }, enabled = targetText.isBlank() || parseMoney(targetText) != null, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Alerts saved" else "Save alerts") }
+            Button(onClick = { save(targetText.takeIf { it.isNotBlank() }?.let(::parseMoney), drops, targets, minimum.toInt()); saved = true }, enabled = targetText.isBlank() || parseMoney(targetText) != null, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Alerts saved" else "Save alerts") }
         } }
         item { InfoCard("Coupon detection", if (p.coupons.isEmpty()) "No public coupon text found. Some offers appear only in the retailer app, account or checkout." else p.coupons.joinToString("\n\n")) }
         item { OutlinedButton(onClick = { uri.openUri(p.url) }, modifier = Modifier.fillMaxWidth()) { Text("Open at ${p.retailer.label}") } }

@@ -30,6 +30,7 @@ class Repository private constructor(context: Context) {
             .put("target", p.target ?: JSONObject.NULL).put("reference", p.reference ?: JSONObject.NULL)
             .put("checked", p.checked).put("error", p.error ?: JSONObject.NULL)
             .put("dropAlerts", p.dropAlerts).put("targetAlerts", p.targetAlerts)
+            .put("paused", p.paused).put("minimumDropPercent", p.minimumDropPercent)
             .put("coupons", JSONArray(p.coupons)).put("history", JSONArray().also { a -> p.history.forEach { a.put(JSONObject().put("time", it.time).put("price", it.price)) } })
         val values = android.content.ContentValues().apply { put("id", p.id); put("payload", json.toString()) }
         db.writableDatabase.insertWithOnConflict("products", null, values, SQLiteDatabase.CONFLICT_REPLACE)
@@ -42,27 +43,24 @@ class Repository private constructor(context: Context) {
         val p = Product(UUID.randomUUID().toString(), clean, retailer, "New ${retailer.label} product")
         save(p); p.id
     } }
-    suspend fun settings(id: String, target: Long?, drops: Boolean, targets: Boolean) = withContext(Dispatchers.IO) { mutex.withLock {
-        state.value.find { it.id == id }?.let { save(it.copy(target = target, dropAlerts = drops, targetAlerts = targets)) }
+    suspend fun settings(id: String, target: Long?, drops: Boolean, targets: Boolean, minimumDrop: Int) = withContext(Dispatchers.IO) { mutex.withLock {
+        state.value.find { it.id == id }?.let { save(it.copy(target = target, dropAlerts = drops, targetAlerts = targets, minimumDropPercent = minimumDrop.coerceIn(0, 100))) }
+    } }
+    suspend fun pause(id: String, paused: Boolean) = withContext(Dispatchers.IO) { mutex.withLock {
+        state.value.find { it.id == id }?.let { save(it.copy(paused = paused)) }
     } }
     suspend fun remove(id: String) = withContext(Dispatchers.IO) { mutex.withLock {
         db.writableDatabase.delete("products", "id=?", arrayOf(id)); state.value = read()
     } }
-    suspend fun refresh(context: Context): Boolean = withContext(Dispatchers.IO) { mutex.withLock {
+    suspend fun refresh(context: Context, onlyId: String? = null): Boolean = withContext(Dispatchers.IO) { mutex.withLock {
         var success = true
-        state.value.toList().forEach { p ->
+        state.value.filter { !it.paused && (onlyId == null || it.id == onlyId) }.forEach { p ->
             try {
                 val listing = RetailerClient().fetch(p.url)
                 val now = System.currentTimeMillis()
                 val current = p.copy(name = listing.name, history = (p.history + Observation(now, listing.price)).filter { it.time >= now - 366L * 86_400_000 }, reference = listing.reference, coupons = listing.coupons, checked = now, error = null)
                 save(current)
-                val old = p.price
-                val drop = p.dropAlerts && old != null && listing.price < old
-                val target = p.target
-                val crossed = p.targetAlerts && target != null && listing.price <= target && (old == null || old > target)
-                if (drop || crossed) runCatching {
-                    Alerts.show(context, p.id, listing.name, if (crossed) "Target reached: ${money(listing.price)}" else "Price dropped to ${money(listing.price)}")
-                }
+                alertReason(p, listing.price)?.let { message -> runCatching { Alerts.show(context, p.id, listing.name, message) } }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 success = false; save(p.copy(error = e.message ?: "Refresh failed", checked = System.currentTimeMillis()))
@@ -77,7 +75,7 @@ class Repository private constructor(context: Context) {
             return Product(j.getString("id"), j.getString("url"), Retailer.fromUrl(j.getString("url")), j.getString("name"),
                 List(h.length()) { h.getJSONObject(it).let { o -> Observation(o.getLong("time"), o.getLong("price")) } },
                 if (j.isNull("target")) null else j.getLong("target"), if (j.isNull("reference")) null else j.getLong("reference"),
-                List(c.length()) { c.getString(it) }, if (j.isNull("error")) null else j.getString("error"), j.optLong("checked"), j.optBoolean("dropAlerts", true), j.optBoolean("targetAlerts", true))
+                List(c.length()) { c.getString(it) }, if (j.isNull("error")) null else j.getString("error"), j.optLong("checked"), j.optBoolean("dropAlerts", true), j.optBoolean("targetAlerts", true), j.optBoolean("paused", false), j.optInt("minimumDropPercent", 0).coerceIn(0,100))
         }
     }
 }
