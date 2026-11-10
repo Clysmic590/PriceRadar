@@ -13,6 +13,12 @@ import androidx.work.*
 import java.util.concurrent.TimeUnit
 
 object Alerts {
+    fun enabled(context: Context): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        return manager.areNotificationsEnabled() &&
+            (manager.getNotificationChannel("prices")?.importance != NotificationManager.IMPORTANCE_NONE)
+    }
+
     fun show(context: Context, id: String, title: String, text: String) {
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(NotificationManager::class.java)
