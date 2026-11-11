@@ -23,11 +23,12 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun PageHeading(title: String, subtitle: String) {
-    Column(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Surface(shape = RoundedCornerShape(99.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)) {
+    val oneUi = LocalOneUiMode.current
+    Column(Modifier.fillMaxWidth().padding(top = if (oneUi) 42.dp else 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!oneUi) Surface(shape = RoundedCornerShape(99.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)) {
             Text("LIVE DEAL RADAR", Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
         }
-        Text(title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
+        Text(title, style = if (oneUi) MaterialTheme.typography.displayMedium else MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
         Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
