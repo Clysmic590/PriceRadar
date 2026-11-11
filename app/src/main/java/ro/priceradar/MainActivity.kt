@@ -236,7 +236,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 } else when (screen.tab) {
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { PageHeading("Your watchlist", "A little patience. A better price.") }
+                    item { PageHeading("Your watchlist", "Every product. Every drop. One radar.") }
                     item { WatchOverview(products.size, activeCount, reachedCount) }
                     item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     if (products.isNotEmpty()) {
