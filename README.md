@@ -2,6 +2,10 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
+## New in 1.3.1
+- Fixes an immediate optimized-build startup crash: Room/WorkManager reflectively constructs `WorkDatabase_Impl`, whose no-argument constructor R8 had removed. An explicit keep rule preserves it.
+- Tagged releases now require an Android 12 tablet-emulator smoke test of the optimized APK (fresh launch, restart, main-screen rendering and rotation) before publication.
+
 ## New in 1.3.0: discovery and smoother rendering
 - Find product searches by name, with eMAG, Vexio and Altex filters, store-labeled results, tracking and view/buy actions. Each tracked listing also has store search shortcuts.
 - When native search results cannot be extracted, browse the selected store inside the app, open a product and tap Track this product. Paste link and Android Share-sheet import remain available.

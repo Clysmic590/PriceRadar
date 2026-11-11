@@ -1,14 +1,9 @@
-Search by product name, choose a store, and track without copying a link.
+Fixes the immediate startup crash in the optimized 1.3.0 APK.
 
-- eMAG, Vexio and Altex filters, store-labeled search previews, and store search shortcuts on tracked listings.
-- In-app store browsing with **Track this product** when native results cannot be extracted; **Open store / buy** opens the selected store externally.
-- Smoother tab/detail transitions and lighter press/refresh animations.
-- Reduce motion defaults on for Android low-RAM devices and can be changed in Settings.
-- Database loading/filtering moved off the UI thread, fewer database reads, cached chart geometry and independently serialized refreshes.
-- Optimized release APK with code/resource shrinking, approximately 1.5 MB.
+R8 had removed the public no-argument constructor Room uses to initialize WorkManager's database. The constructor is now explicitly retained. Release publishing is gated on launching the actual optimized APK on an Android 12 tablet emulator, restarting it and rotating the display.
 
-Download **PriceRadar-1.3.0.apk** below. Android 8 or newer is required. This uses the same public development signing key as 1.1–1.2, so installing over those versions can retain your watchlist/history. Do not uninstall first. The 1.0 signing key is different and may require uninstalling, which deletes local data.
+Download **PriceRadar-1.3.1.apk** below and install it over 1.3.0. The signing key is unchanged; uninstalling is not required. Android version code: 7. Android 8+ is supported.
 
-Search previews never become price-history observations. Cross-store results can differ in model, seller, variant and stock. Public native search extraction remains experimental: current checks returned HTTP 410 for eMAG and no readable product listings for Vexio/Altex; the store-browser fallback is available. Actual device performance and store-browser behavior still need phone testing. No lag-free guarantee is claimed.
+Includes all 1.3 features: product-name search, eMAG/Vexio/Altex choices, store-browser tracking, smoother transitions, reduced motion and optimized rendering. Native search remains experimental and uses the store-browser fallback when results are unavailable.
 
-Validation: 17 unit tests, release lint, optimized APK build and signing-certificate checks. SHA256SUMS.txt contains the APK checksum. This is a development-signed sideload build, not a Play Store release.
+Validation: unit tests, release lint, optimized APK build and Android 12 release-APK startup checks. APK checksum is in SHA256SUMS.txt. This is a development-signed sideload build, not a Play Store release.
