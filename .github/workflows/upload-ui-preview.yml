@@ -1,0 +1,19 @@
+name: Upload UI preview
+on:
+  push:
+    branches: [ui-preview-download]
+permissions:
+  contents: write
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Publish requested test APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd preview
+          sha256sum PriceRadar-UI-preview.apk > SHA256SUMS.txt
+          gh release create ui-preview-20261111 --target "$GITHUB_SHA" --prerelease --latest=false --title "PriceRadar UI preview" --notes-file notes.md PriceRadar-UI-preview.apk SHA256SUMS.txt
