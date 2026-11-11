@@ -24,13 +24,21 @@ data class Product(
     val paused: Boolean = false, val minimumDropPercent: Int = 0
 ) { val price: Long? get() = history.lastOrNull()?.price }
 enum class WatchSort(val label: String) { RECENT("Recently checked"), PRICE("Lowest price"), NAME("Name"), TARGET("Near target") }
-fun watchlist(products: List<Product>, query: String, retailer: String, sort: WatchSort): List<Product> {
+enum class WatchStatus(val label: String) { ALL("All states"), ACTIVE("Active"), PAUSED("Paused"), TARGET_MET("Target reached"), FAILED("Check failed") }
+fun watchlist(products: List<Product>, query: String, retailer: String, sort: WatchSort, status: WatchStatus = WatchStatus.ALL): List<Product> {
     val filtered = products.filter { (retailer == "All" || it.retailer.label == retailer) && (it.name.contains(query.trim(), true) || it.retailer.label.contains(query.trim(), true)) }
+    val matching = filtered.filter { p -> when (status) {
+        WatchStatus.ALL -> true
+        WatchStatus.ACTIVE -> !p.paused
+        WatchStatus.PAUSED -> p.paused
+        WatchStatus.TARGET_MET -> p.price?.let { price -> p.target?.let { price <= it } } == true
+        WatchStatus.FAILED -> p.error != null
+    } }
     return when (sort) {
-        WatchSort.RECENT -> filtered.sortedByDescending { it.checked }
-        WatchSort.PRICE -> filtered.sortedBy { it.price ?: Long.MAX_VALUE }
-        WatchSort.NAME -> filtered.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
-        WatchSort.TARGET -> filtered.sortedBy { p -> if (p.price != null && p.target != null) p.price!!.toDouble() / p.target else Double.MAX_VALUE }
+        WatchSort.RECENT -> matching.sortedByDescending { it.checked }
+        WatchSort.PRICE -> matching.sortedBy { it.price ?: Long.MAX_VALUE }
+        WatchSort.NAME -> matching.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+        WatchSort.TARGET -> matching.sortedBy { p -> if (p.price != null && p.target != null) p.price!!.toDouble() / p.target else Double.MAX_VALUE }
     }
 }
 fun alertReason(p: Product, next: Long): String? {

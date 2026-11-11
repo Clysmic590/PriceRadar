@@ -27,4 +27,17 @@ class UpgradeTest {
         assertTrue(csv.contains("\"100.00\",\"99.99\""))
         assertEquals(1, historyCsv(emptyList()).lines().filter { it.isNotBlank() }.size)
     }
+    @Test fun statusFiltersCombineWithSearchAndRetailer() {
+        val reached = base.copy(id = "reached", target = 10000)
+        val paused = base.copy(id = "paused", paused = true)
+        val failed = base.copy(id = "failed", error = "Offline")
+        val unknown = base.copy(id = "unknown", history = emptyList(), target = 10000)
+        val products = listOf(reached, paused, failed, unknown)
+        assertEquals(listOf(paused), watchlist(products, "", "All", WatchSort.NAME, WatchStatus.PAUSED))
+        assertEquals(listOf(reached), watchlist(products, "HEAD", "eMAG", WatchSort.NAME, WatchStatus.TARGET_MET))
+        assertEquals(listOf(failed), watchlist(products, "", "All", WatchSort.NAME, WatchStatus.FAILED))
+        assertFalse(watchlist(products, "", "All", WatchSort.NAME, WatchStatus.ACTIVE).contains(paused))
+        assertTrue(watchlist(products, "", "Altex", WatchSort.NAME, WatchStatus.TARGET_MET).isEmpty())
+        assertTrue(watchlist(products, "Speaker", "All", WatchSort.NAME, WatchStatus.FAILED).isEmpty())
+    }
 }

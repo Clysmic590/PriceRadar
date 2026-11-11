@@ -2,6 +2,13 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
+## New in 1.2.0
+- Animated tab transitions and springy product-card presses.
+- Pull down on the watchlist to refresh active products; tab scroll positions are retained.
+- Filter active/paused products, reached targets and failed checks alongside retailer/search filters.
+- Clear search, reset filters, see matching counts and share a product through Android's share sheet.
+- Refresh explains when there are no active products to check.
+
 ## New in 1.1.6
 - One UI-inspired dark appearance for every install, with rounded panels, blue accents and gentle navigation, refresh, watchlist and chart animations. The theme picker has been removed; existing theme preferences no longer apply.
 - Notification status follows Android app/category settings; refresh feedback dismisses automatically (respecting accessibility timeout preferences).
@@ -68,3 +75,9 @@ Notifications and background scheduling still need on-device Android 17 testing,
 
 ## Structure
 `MainActivity.kt` contains Compose screens; `Repository.kt` owns persistent state; `RetailerClient.kt` extracts public listings; `Models.kt` contains price and discount rules; `Alerts.kt` owns notifications and scheduled work. No API credentials are required or committed.
+
+## 1.2.0 acceptance checks
+- Pull down at the top of an empty, paused-only and populated watchlist. Verify appropriate feedback and only one refresh at a time.
+- Combine status, retailer and search filters, then clear/reset them. Unknown prices must not count as reached targets.
+- Scroll each tab, switch away/back, and verify position is retained. Check tab transitions and card presses with system animation scales disabled as well.
+- Share a product and verify its name and exact URL; cancel the share sheet and confirm the app returns normally.

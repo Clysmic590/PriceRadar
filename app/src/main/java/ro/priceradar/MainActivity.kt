@@ -12,6 +12,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -22,6 +28,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -102,6 +110,10 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consu
     var filter by rememberSaveable { mutableStateOf("All") }
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(WatchSort.RECENT) }
+    var status by rememberSaveable { mutableStateOf(WatchStatus.ALL) }
+    val watchScroll = rememberLazyListState()
+    val couponScroll = rememberLazyListState()
+    val settingsScroll = rememberLazyListState()
     var notice by remember { mutableStateOf<String?>(null) }
     val accessibility = LocalAccessibilityManager.current
     val noticeTimeout = accessibility?.calculateRecommendedTimeoutMillis(6000, containsText = true, containsControls = true) ?: 6000L
@@ -136,7 +148,22 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consu
     }
     LaunchedEffect(shared) { if (shared.isNotBlank()) { url = shared; adding = true; consumed() } }
     LaunchedEffect(openedProduct) { if (openedProduct != null) { selected = openedProduct.takeIf { id -> products.any { it.id == id } }; opened() } }
-    fun refresh(id: String? = selected) { scope.launch { notice = null; busy = true; try { val ok = repo.refresh(context, id); notice = if (ok) "Check complete" else "Some checks failed · see product details" } finally { busy = false } } }
+    fun refresh(id: String? = selected) {
+        if (busy) return
+        val currentProducts = repo.products.value
+        if (currentProducts.none { !it.paused && (id == null || it.id == id) }) {
+            notice = if (currentProducts.isEmpty()) "Add a product to start checking prices" else "No active products to check · resume tracking first"
+            return
+        }
+        notice = null
+        busy = true
+        scope.launch {
+            try {
+                val ok = repo.refresh(context, id)
+                notice = if (ok) "Check complete" else "Some checks failed · see product details"
+            } finally { busy = false }
+        }
+    }
     val product = products.find { it.id == selected }
     BackHandler(enabled = selected != null) { selected = null }
     Scaffold(
@@ -163,8 +190,14 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consu
                     save = { target, drops, targets, minimum -> scope.launch { repo.settings(product.id, target, drops, targets, minimum) } },
                     pause = { value -> scope.launch { repo.pause(product.id, value) } },
                     remove = { scope.launch { repo.remove(product.id); selected = null } })
-            } else when (tab) {
-                0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            } else AnimatedContent(targetState = tab, modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    val direction = if (targetState > initialState) 1 else -1
+                    (fadeIn(tween(220)) + slideInHorizontally(tween(250)) { it / 8 * direction }) togetherWith
+                        (fadeOut(tween(150)) + slideOutHorizontally(tween(250)) { -it / 8 * direction })
+                }, label = "tab transition") { activeTab -> when (activeTab) {
+                0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Column(Modifier.padding(vertical = 12.dp)) {
                         Text("BUY AT THE RIGHT MOMENT", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         Text("Good prices.\nNo guesswork.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
@@ -178,21 +211,29 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consu
                         (listOf("All") + Retailer.entries.map { it.label }).forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
                     } }
                     item { Text("Your watchlist", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                    item { OutlinedTextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search products") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }) }
+                    item { OutlinedTextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search products") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
                     item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchSort.entries.forEach { option -> FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.label) }) } } }
+                    item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchStatus.entries.forEach { option -> FilterChip(selected = status == option, onClick = { status = option }, label = { Text(option.label) }) } } }
                     if (products.isEmpty()) item { RadarWelcome() }
-                    val visible = watchlist(products, query, filter, sort)
-                    if (products.isNotEmpty() && visible.isEmpty()) item { Text("No matching products. Try another search or retailer.") }
+                    val visible = watchlist(products, query, filter, sort, status)
+                    if (products.isNotEmpty()) item { Text("${visible.size} of ${products.size} products · pull down to refresh", style = MaterialTheme.typography.labelMedium) }
+                    if (products.isNotEmpty() && visible.isEmpty()) item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("No matching products. Try another search or filter.")
+                            TextButton(onClick = { query = ""; filter = "All"; status = WatchStatus.ALL }) { Text("Reset filters") }
+                        }
+                    }
                     items(visible, key = { it.id }) { p -> ProductCard(p, Modifier.animateItem()) { selected = p.id } }
                 }
-                1 -> LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                }
+                1 -> LazyColumn(state = couponScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Text("Coupon radar", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
                     item { InfoCard("Public offers, in one place", "Coupon text found on tracked product pages appears here. Availability and checkout eligibility must be verified with the retailer.") }
                     val found = products.filter { it.coupons.isNotEmpty() }
                     if (found.isEmpty()) item { Text("No coupon text detected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
                 }
-                else -> LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Text("Your radar, your rules", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
                     item { OutlinedButton(onClick = { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Export price history (CSV)") } }
                     item { Text("Export includes product links, UTC timestamps, observed prices and targets. Choose where to save it.", style = MaterialTheme.typography.bodySmall) }
@@ -217,7 +258,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consu
                     item { InfoCard("Private by design", "Your watchlist and observations stay on this device. Uninstalling clears them. Product URLs are sent directly to the selected retailer; no account or tracking backend is used.") }
                     item { InfoCard("Fake-discount detector", "Compares the advertised reference price with the lowest price observed in the previous 30 days. At least 7 distinct observed days are required. This is a limited-data signal, not a legal determination.") }
                 }
-            }
+            } }
         }
     }
     if (adding) AlertDialog(onDismissRequest = { adding = false; error = null }, title = { Text("Track a product") }, text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -234,7 +275,11 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, consu
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, fontWeight = FontWeight.SemiBold); Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) } }
 }
 @Composable private fun ProductCard(p: Product, modifier: Modifier = Modifier, open: () -> Unit) {
-    Card(onClick = open, modifier = modifier.fillMaxWidth().animateContentSize()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(if (pressed) 0.975f else 1f,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "product press")
+    Card(onClick = open, interactionSource = interaction, modifier = modifier.fillMaxWidth().scale(pressScale).animateContentSize()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(p.retailer.label.uppercase(), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium); if (p.coupons.isNotEmpty()) Text("Coupon detected", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium) }
         Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
         if (p.paused) Text("Tracking paused", color = MaterialTheme.colorScheme.secondary)
@@ -255,6 +300,7 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
     var saved by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
+    val context = LocalContext.current
     val points = p.history.filter { it.time >= System.currentTimeMillis() - period.duration.toMillis() }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(top = 16.dp)) }
@@ -280,6 +326,12 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
             Button(onClick = { save(targetText.takeIf { it.isNotBlank() }?.let(::parseMoney), drops, targets, minimum.toInt()); saved = true }, enabled = targetText.isBlank() || parseMoney(targetText) != null, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Alerts saved" else "Save alerts") }
         } }
         item { InfoCard("Coupon detection", if (p.coupons.isEmpty()) "No public coupon text found. Some offers appear only in the retailer app, account or checkout." else p.coupons.joinToString("\n\n")) }
+        item { OutlinedButton(onClick = {
+            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "${p.name}\n${p.url}")
+            }, "Share product"))
+        }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(8.dp)); Text("Share product") } }
         item { OutlinedButton(onClick = { uri.openUri(p.url) }, modifier = Modifier.fillMaxWidth()) { Text("Open at ${p.retailer.label}") } }
         item { TextButton(onClick = { deleting = true }) { Text("Stop tracking", color = MaterialTheme.colorScheme.error) } }
     }
