@@ -1,6 +1,8 @@
-name: Android debug APK
+name: Android optimized APK
 on:
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -21,7 +23,18 @@ jobs:
           packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
+      - name: Verify release tag matches APK version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          version = re.search(r'versionName = "([^"]+)"', Path('app/build.gradle.kts').read_text()).group(1)
+          assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag does not match app version'
+          PY
+      - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintRelease assembleRelease --stacktrace
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -29,10 +42,41 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/test-results/
-            app/build/reports/lint-results-debug.*
+            app/build/reports/lint-results-release.*
       - uses: actions/upload-artifact@v4
         with:
-          name: PriceRadar-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: PriceRadar-APK
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: PriceRadar-APK
+          path: release-assets
+      - name: Publish verified APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, re, subprocess
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Expected a semantic version tag'
+          version = tag[1:]
+          assets = Path('release-assets')
+          apk = assets / f'PriceRadar-{version}.apk'
+          (assets / 'app-release.apk').rename(apk)
+          checksums = assets / 'SHA256SUMS.txt'
+          checksums.write_text(hashlib.sha256(apk.read_bytes()).hexdigest() + '  ' + apk.name + '\n')
+          subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version}', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
+          PY

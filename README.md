@@ -2,6 +2,17 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
+## New in 1.3.0: discovery and smoother rendering
+- Find product searches by name, with eMAG, Vexio and Altex filters, store-labeled results, tracking and view/buy actions. Each tracked listing also has store search shortcuts.
+- When native search results cannot be extracted, browse the selected store inside the app, open a product and tap Track this product. Paste link and Android Share-sheet import remain available.
+- Search results are previews and never become history observations. Store results can differ in variant, seller and availability; cross-store identity matching is not claimed.
+- Short directional transitions cover tabs and product details. Press/refresh effects update drawing layers; charts cache paths and cap geometry at 240 points while retaining bucket extremes and endpoints.
+- Reduce motion is enabled by default on Android low-RAM devices and can be changed in Settings. Animations respect Android system animation settings.
+- Release APKs use R8 code optimization and resource shrinking; CI now builds the optimized APK, retaining the same development signing key for updates.
+- Startup database reads and watchlist filtering run off the UI thread. Saving one product no longer re-reads every product/history from SQLite. Refresh requests serialize independently of watchlist edits and re-check whether a product was paused/deleted before saving a response.
+
+Native search availability was checked on November 11, 2026: the eMAG search request returned HTTP 410; Vexio and Altex returned HTML without usable product listings. No successful live native search extraction is claimed. The parser has synthetic-fixture tests; in-app store browsing and retailer behavior require device testing. Search requests are explicit, limited to three stores, time out after 12 seconds, cap responses at 2 MB and cache successful results briefly in memory. Only one store browser exists at a time and is destroyed when closed. It uses the store's own JavaScript and may be heavier than native screens.
+
 ## New in 1.2.0
 - Animated tab transitions and springy product-card presses.
 - Pull down on the watchlist to refresh active products; tab scroll positions are retained.
@@ -39,12 +50,12 @@ No fabricated history or seeded live prices. History accumulates on this device 
 Use JDK 17, Android SDK platform 37, and Gradle Wrapper:
 
 ```sh
-./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew testDebugUnitTest lintRelease assembleRelease
 ```
 
 On Windows use `gradlew.bat`. Set `ANDROID_HOME` or create an untracked `local.properties` with `sdk.dir`.
 
-Every push, pull request or manual **Actions → Android debug APK → Run workflow** compiles, tests, lints and uploads **PriceRadar-debug**. Open a successful run and download its artifact ZIP; extract `app-debug.apk`. This is a debug-signed APK for sideloading, not a Play Store release. Artifacts expire after 30 days.
+Every push, pull request or manual **Actions → Android optimized APK → Run workflow** compiles, tests, lints and uploads **PriceRadar-APK**. Open a successful run and download its artifact ZIP; extract `app-release.apk`. This is a code/resource-shrunk release build signed with the repository's public development key for sideloading, not a Play Store release. Debug builds remain available with `./gradlew assembleDebug`. Artifacts expire after 30 days.
 
 ## Retailer integration status — live testing required
 
@@ -81,3 +92,10 @@ Notifications and background scheduling still need on-device Android 17 testing,
 - Combine status, retailer and search filters, then clear/reset them. Unknown prices must not count as reached targets.
 - Scroll each tab, switch away/back, and verify position is retained. Check tab transitions and card presses with system animation scales disabled as well.
 - Share a product and verify its name and exact URL; cancel the share sheet and confirm the app returns normally.
+
+## Discovery/performance acceptance checks
+- Search a name, a model with punctuation and a nonexistent product; inspect each store and its unavailable/empty state. Open a native result and verify exact variant, seller, price/currency and availability at the store.
+- Browse each store in-app, navigate to a product, track without copying a URL, and use Open store / buy. Verify browsing stops at other sites and login/CAPTCHA/SSL errors are not bypassed. Back/results/close must free the browser; repeat on a low-memory device.
+- Search rapidly, switch stores, leave during requests, rotate and retry offline. Confirm no stale results are applied to a new query and no search preview is inserted into history.
+- Populate a large watchlist and dense history, cold-start, scroll/sort/filter, refresh while pausing/removing products, and open charts. Confirm settings/history survive restart and paused/deleted products are not restored by an in-flight refresh.
+- Measure frame times and memory on an actual lower-end phone in both motion modes; responsiveness improvements are implemented but no lag-free claim or device benchmark has been established.
