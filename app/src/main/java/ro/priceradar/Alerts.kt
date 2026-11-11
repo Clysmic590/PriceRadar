@@ -30,11 +30,21 @@ object Alerts {
         manager.notify(id.hashCode(), NotificationCompat.Builder(context, "prices").setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentTitle(title).setContentText(text).setContentIntent(intent).setAutoCancel(true).build())
     }
-    fun schedule(context: Context) {
-        val request = PeriodicWorkRequestBuilder<PriceWorker>(6, TimeUnit.HOURS)
+    val intervals = listOf(1, 3, 6, 12, 24)
+    fun interval(context: Context): Int = context.getSharedPreferences("refresh", Context.MODE_PRIVATE)
+        .getInt("hours", 6).takeIf { it in intervals } ?: 6
+
+    fun changeInterval(context: Context, hours: Int) {
+        require(hours in intervals)
+        context.getSharedPreferences("refresh", Context.MODE_PRIVATE).edit().putInt("hours", hours).apply()
+        schedule(context, update = true)
+    }
+
+    fun schedule(context: Context, update: Boolean = false) {
+        val request = PeriodicWorkRequestBuilder<PriceWorker>(interval(context).toLong(), TimeUnit.HOURS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork("price-check", ExistingPeriodicWorkPolicy.KEEP, request)
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork("price-check", if (update) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP, request)
     }
 }
 class PriceWorker(context: Context, params: WorkerParameters): CoroutineWorker(context, params) {

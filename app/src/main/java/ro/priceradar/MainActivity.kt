@@ -13,16 +13,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithCache
@@ -107,6 +99,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     val startupError by repo.startupError.collectAsStateWithLifecycle()
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
+    var refreshHours by remember { mutableIntStateOf(Alerts.interval(context)) }
+    var showRefreshSchedule by rememberSaveable { mutableStateOf(false) }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var discovering by rememberSaveable { mutableStateOf(false) }
     var discoveryQuery by rememberSaveable { mutableStateOf("") }
@@ -195,28 +190,27 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 NavigationBarItem(selected = tab == i, onClick = { tab = i }, label = { Text(title) }, icon = { val pop = animateFloatAsState(if (tab == i && !reducedMotion) 1.10f else 1f, if (reducedMotion) snap() else spring(dampingRatio = Spring.DampingRatioNoBouncy), label = "tab focus"); Icon(when(i) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings }, title, Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }) })
             }
         } },
+        snackbarHost = {
+            notice?.let { message -> Snackbar(
+                modifier = Modifier.padding(16.dp),
+                action = { TextButton(onClick = { notice = null }) { Text("Dismiss") } }
+            ) { Text(message) } }
+        },
         floatingActionButton = { if (product == null && tab == 0) ExtendedFloatingActionButton(onClick = { discoveryQuery = ""; discoveryStore = null; discovering = true }, icon = { Icon(Icons.Default.Search, null) }, text = { Text("Find product") }, containerColor = MaterialTheme.colorScheme.primary) },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            AnimatedVisibility(notice != null, enter = if (reducedMotion) EnterTransition.None else fadeIn(tween(160)), exit = if (reducedMotion) ExitTransition.None else fadeOut(tween(120))) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) { Text(notice.orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall); TextButton(onClick = { notice = null }) { Text("Dismiss") } }
+            Box(Modifier.fillMaxWidth().height(4.dp)) {
+                if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            AnimatedContent(targetState = RadarScreen(selected, tab), modifier = Modifier.weight(1f),
-                transitionSpec = {
-                    if (reducedMotion) EnterTransition.None togetherWith ExitTransition.None
-                    else {
-                        val direction = when {
-                            targetState.productId != null -> 1
-                            initialState.productId != null -> -1
-                            targetState.tab > initialState.tab -> 1
-                            else -> -1
-                        }
-                        ((fadeIn(tween(180)) + slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { it / 12 * direction }) togetherWith
-                            fadeOut(tween(100))).using(null)
-                    }
-                }, label = "screen transition") { screen ->
+            // Animate a single screen layer: avoid composing and measuring two lists at once.
+            val screen = RadarScreen(selected, tab)
+            val screenAlpha = remember { Animatable(1f) }
+            LaunchedEffect(screen, reducedMotion) {
+                if (reducedMotion) screenAlpha.snapTo(1f)
+                else { screenAlpha.snapTo(0.65f); screenAlpha.animateTo(1f, tween(180, easing = FastOutSlowInEasing)) }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth().graphicsLayer { alpha = screenAlpha.value }) {
                 val displayProduct = products.find { it.id == screen.productId }
                 if (displayProduct != null) {
                     ProductDetail(displayProduct,
@@ -227,9 +221,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Column(Modifier.padding(vertical = 12.dp)) {
-                        Text("BUY AT THE RIGHT MOMENT", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                        Text("Good prices.\nNo guesswork.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                        Text("Your personal radar for Romanian retailers", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
+                        Text("YOUR PERSONAL PRICE RADAR", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        Text("Watch prices.\nCatch the drop.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                        Text("eMAG, Vexio & Altex, together in your watchlist.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
                     } }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Stat("${products.size}", "Tracking", Modifier.weight(1f))
@@ -238,10 +232,13 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         (listOf("All") + Retailer.entries.map { it.label }).forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
                     } }
-                    item { Text("Your watchlist", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Your watchlist", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { showFilters = !showFilters }) { Icon(Icons.Default.Tune, null); Text(if (showFilters) "Hide filters" else "Filters") }
+                    } }
                     item { OutlinedTextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search products") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
-                    item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchSort.entries.forEach { option -> FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.label) }) } } }
-                    item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchStatus.entries.forEach { option -> FilterChip(selected = status == option, onClick = { status = option }, label = { Text(option.label) }) } } }
+                    if (showFilters) item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchSort.entries.forEach { option -> FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.label) }) } } }
+                    if (showFilters) item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchStatus.entries.forEach { option -> FilterChip(selected = status == option, onClick = { status = option }, label = { Text(option.label) }) } } }
                     if (products.isEmpty() && !loading) item { RadarWelcome() }
                     if (products.isNotEmpty()) item { Text("${visible.size} of ${products.size} products · pull down to refresh", style = MaterialTheme.typography.labelMedium) }
                     if (products.isNotEmpty() && visible.isEmpty()) item {
@@ -251,7 +248,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         }
                     }
                     items(visible, key = { it.id }, contentType = { "tracked-product" }) { p ->
-                        ProductCard(p, if (reducedMotion) Modifier else Modifier.animateItem(),
+                        ProductCard(p, Modifier,
                             chooseStore = { store -> discoveryQuery = p.name; discoveryStore = store; discovering = true }) { selected = p.id }
                     }
                 }
@@ -264,14 +261,23 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
                 }
                 else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { Text("Your radar, your rules", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+                    item { Text("Make it yours", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+                    item { Text("Set your pace. We’ll keep an eye on prices.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item { Card(onClick = { showRefreshSchedule = true }) {
+                        Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Icon(Icons.Default.Schedule, null, tint = MaterialTheme.colorScheme.primary)
+                            Column(Modifier.weight(1f)) { Text("Automatic refresh", style = MaterialTheme.typography.titleMedium); Text("Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", color = MaterialTheme.colorScheme.primary) }
+                            Icon(Icons.Default.ChevronRight, "Change refresh interval")
+                        }
+                    } }
+                    item { Text("Checks need internet. Android may delay them to save battery. Pull down on your watchlist for an immediate check.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     item { Card { Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text("Reduce motion", fontWeight = FontWeight.Bold); Text("Lighter transitions for slower phones. Enabled automatically on low-memory devices.", style = MaterialTheme.typography.bodySmall) }
                         Switch(reducedMotion, changeMotion)
                     } } }
                     item { OutlinedButton(onClick = { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Export price history (CSV)") } }
                     item { Text("Export includes product links, UTC timestamps, observed prices and targets. Choose where to save it.", style = MaterialTheme.typography.bodySmall) }
-                    item { InfoCard("Background checks", "Prices are checked approximately every 6 hours with an internet connection. Android battery management can delay checks. Open the app and tap refresh for an immediate check.") }
+
                     item { Text(if (notificationsEnabled) "Notifications enabled" else "Notifications disabled · allow notifications and the Price alerts category in Android settings") }
                     item { Button(onClick = {
                         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
@@ -294,6 +300,30 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 }
             } }
         }
+    }
+    if (showRefreshSchedule) {
+        var choice by rememberSaveable { mutableIntStateOf(refreshHours) }
+        AlertDialog(onDismissRequest = { showRefreshSchedule = false },
+            title = { Text("Refresh prices") },
+            text = { Column {
+                Text("Choose how often to check in the background.", modifier = Modifier.padding(bottom = 12.dp))
+                Alerts.intervals.forEach { hours ->
+                    Surface(onClick = { choice = hours }, shape = MaterialTheme.shapes.medium,
+                        color = if (choice == hours) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = choice == hours, onClick = null)
+                            Text("Every $hours ${if (hours == 1) "hour" else "hours"}", Modifier.padding(12.dp))
+                        }
+                    }
+                }
+            } },
+            confirmButton = { TextButton(onClick = {
+                Alerts.changeInterval(context, choice)
+                refreshHours = choice
+                showRefreshSchedule = false
+                notice = "Refresh schedule updated"
+            }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { showRefreshSchedule = false }) { Text("Cancel") } })
     }
     if (discovering) ProductSearchDialog(initialQuery = discoveryQuery, initialStore = discoveryStore,
         onClose = { discovering = false }, onPasteLink = { discovering = false; adding = true }, onTrack = { link ->

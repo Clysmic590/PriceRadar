@@ -74,7 +74,9 @@ jobs:
           profile: Nexus 7
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: bash .github/scripts/android-startup-smoke.sh release-assets/app-release.apk
+          script: |
+            bash .github/scripts/android-startup-smoke.sh release-assets/app-release.apk
+            python3 .github/scripts/refresh-settings-smoke.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

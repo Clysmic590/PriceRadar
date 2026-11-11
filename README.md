@@ -2,6 +2,13 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
+## Upcoming UI and refresh update
+- Refreshed navy surfaces, tighter cards, a simpler watchlist and collapsible sort/status controls.
+- Settings → Automatic refresh opens a picker for 1, 3, 6, 12 or 24 hours. Save updates the existing unique WorkManager schedule; Cancel preserves it. The default remains six hours and the choice survives restart.
+- Refresh feedback overlays the page without shifting content; the progress bar keeps a fixed slot.
+- Screen changes fade a single rendering layer instead of simultaneously composing two screens. Removed list placement animation to reduce work during filtering; Reduce motion remains available.
+- Run `.github/scripts/refresh-settings-smoke.py` with `adb` on PATH against a disposable emulator after the startup smoke check to verify picker choices, save/cancel and persistence.
+
 ## New in 1.3.1
 - Fixes an immediate optimized-build startup crash: Room/WorkManager reflectively constructs `WorkDatabase_Impl`, whose no-argument constructor R8 had removed. An explicit keep rule preserves it.
 - Tagged releases now require an Android 12 tablet-emulator smoke test of the optimized APK (fresh launch, restart, main-screen rendering and rotation) before publication.
