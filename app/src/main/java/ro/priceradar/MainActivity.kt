@@ -59,6 +59,16 @@ import java.util.Locale
 
 
 private data class RadarScreen(val productId: String?, val tab: Int)
+private val WatchlistTaglines = listOf(
+    "Every product. Every drop. One radar.",
+    "Good prices rarely announce themselves.",
+    "Watching the numbers so you don't have to.",
+    "Your next price drop starts here.",
+    "Less guessing. Better buying.",
+    "Deals move fast. Your radar moves faster.",
+    "Patience pays. PriceRadar proves it.",
+    "Keep watch. Catch the drop."
+)
 
 class MainActivity : ComponentActivity() {
     private var shared by mutableStateOf("")
@@ -102,6 +112,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     val startupError by repo.startupError.collectAsStateWithLifecycle()
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
+    val watchlistTagline = rememberSaveable { WatchlistTaglines.random() }
     var refreshHours by remember { mutableIntStateOf(Alerts.interval(context)) }
     var showRefreshSchedule by rememberSaveable { mutableStateOf(false) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
@@ -236,7 +247,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 } else when (screen.tab) {
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { PageHeading("Your watchlist", "Every product. Every drop. One radar.") }
+                    item { PageHeading("Your watchlist", watchlistTagline) }
                     item { WatchOverview(products.size, activeCount, reachedCount) }
                     item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     if (products.isNotEmpty()) {
