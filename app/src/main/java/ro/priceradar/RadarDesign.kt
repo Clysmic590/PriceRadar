@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,25 +34,38 @@ fun PageHeading(title: String, subtitle: String) {
 
 @Composable
 fun WatchOverview(total: Int, active: Int, reached: Int) {
+    val accent = MaterialTheme.colorScheme.primary
     Surface(color = Color.Transparent, shape = RoundedCornerShape(32.dp)) {
-        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF254A19), Color(0xFF14291C), Color(0xFF15251F)))).border(1.dp, Color(0xFFA8F56A).copy(alpha = .25f), RoundedCornerShape(32.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF203C66), Color(0xFF17273F), Color(0xFF17212F)))).border(1.dp, accent.copy(alpha = .28f), RoundedCornerShape(32.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (active > 0) "●  RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelMedium, color = Color(0xFFA8F56A))
+                    Text(if (active > 0) "●  RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelMedium, color = accent)
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("$total", fontSize = 56.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         Text(if (total == 1) "product tracked" else "products tracked", Modifier.padding(bottom = 8.dp), color = Color(0xFFCAD8CC))
                     }
                 }
-                Surface(shape = CircleShape, color = Color(0xFFA8F56A).copy(alpha = 0.14f), modifier = Modifier.border(1.dp, Color(0xFFA8F56A).copy(alpha=.3f), CircleShape)) {
-                    Icon(Icons.Default.Radar, null, Modifier.padding(18.dp).size(38.dp), tint = Color(0xFFA8F56A))
-                }
+                AnimatedRadarOrb(active)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OverviewMetric("$active", "Watching", Modifier.weight(1f))
                 OverviewMetric("$reached", "Targets met", Modifier.weight(1f))
             }
         }
+    }
+}
+
+@Composable
+private fun AnimatedRadarOrb(active: Int) {
+    val reduced = LocalReducedMotion.current
+    val motion = rememberInfiniteTransition(label = "dashboard radar")
+    val angle by motion.animateFloat(0f, 360f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "radar rotation")
+    val pulse by motion.animateFloat(.9f, 1.08f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "radar pulse")
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(shape = CircleShape, color = accent.copy(alpha = if (active > 0) .16f else .08f), modifier = Modifier
+        .graphicsLayer { scaleX = if (reduced || active == 0) 1f else pulse; scaleY = scaleX }
+        .border(1.dp, accent.copy(alpha=.38f), CircleShape)) {
+        Icon(Icons.Default.Radar, null, Modifier.padding(18.dp).size(38.dp).graphicsLayer { rotationZ = if (reduced || active == 0) 0f else angle }, tint = accent)
     }
 }
 
@@ -64,6 +79,9 @@ private fun OverviewMetric(value: String, label: String, modifier: Modifier) {
 
 @Composable
 fun DiscoveryTile(onClick: () -> Unit) {
+    val reduced = LocalReducedMotion.current
+    val motion = rememberInfiniteTransition(label = "discovery cue")
+    val nudge by motion.animateFloat(0f, 7f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "arrow nudge")
     Surface(onClick = onClick, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha=.18f), RoundedCornerShape(24.dp))) {
         Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconTile(Icons.Default.Search)
@@ -71,7 +89,7 @@ fun DiscoveryTile(onClick: () -> Unit) {
                 Text("Hunt for a better deal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Scan eMAG, Vexio & Altex", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Default.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Default.ArrowForward, null, Modifier.graphicsLayer { translationX = if (reduced) 0f else nudge }, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

@@ -306,7 +306,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     item { Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary)
                         Text("PriceRadar", style = MaterialTheme.typography.titleMedium)
-                        Text("UI remake · 1.4.0 preview 1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Version ${BuildConfig.VERSION_NAME} · design preview", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } }
 
                 }
