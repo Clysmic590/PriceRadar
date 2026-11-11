@@ -63,7 +63,7 @@ fun DiscoveryTile(onClick: () -> Unit) {
             IconTile(Icons.Default.Search)
             Column(Modifier.weight(1f)) {
                 Text("Find something worth watching", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Search eMAG, Vexio & Altex", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Browse eMAG, Vexio & Altex websites", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Default.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
         }

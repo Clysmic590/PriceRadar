@@ -2,6 +2,9 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
+## Store website search only (unreleased)
+Native product-result search and its parser/cache have been removed. Choose eMAG, Vexio or Altex and search its website in the store browser. Tracking the opened product, paste-link import and searching the saved watchlist remain available.
+
 ## Vexio fixes (unreleased)
 - Recognize Vexio's category/brand/product-ID links as trackable products, retaining legacy category/product links and retailer/HTTPS validation.
 - Vexio search returns a JavaScript shell. Selecting Vexio and searching now opens the store's interactive results directly; all-store search offers an explicit Open Vexio results action instead of claiming there are no matches.
