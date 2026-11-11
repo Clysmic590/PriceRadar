@@ -1,0 +1,19 @@
+name: Attach PriceRadar 1.4.0 APK
+on:
+  push:
+    branches: [release-1.4.0]
+permissions:
+  contents: write
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify and attach APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd release-apk
+          sha256sum -c SHA256SUMS.txt
+          gh release upload v1.4.0 PriceRadar-1.4.0.apk SHA256SUMS.txt --clobber
