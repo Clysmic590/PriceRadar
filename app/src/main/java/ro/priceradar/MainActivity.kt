@@ -88,11 +88,15 @@ class MainActivity : ComponentActivity() {
             }
             val preferences = remember { getSharedPreferences("performance", MODE_PRIVATE) }
             var reducedMotion by remember { mutableStateOf(preferences.getBoolean("reduced_motion", getSystemService(ActivityManager::class.java).isLowRamDevice)) }
+            var oneUiMode by remember { mutableStateOf(preferences.getBoolean("one_ui_9_mode", false)) }
             CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
-                RadarTheme {
+                RadarTheme(oneUiMode) {
                     PriceRadar(shared, openedProduct, { openedProduct = null }, { value ->
                         reducedMotion = value
                         preferences.edit().putBoolean("reduced_motion", value).apply()
+                    }, oneUiMode, { value ->
+                        oneUiMode = value
+                        preferences.edit().putBoolean("one_ui_9_mode", value).apply()
                     }) { shared = "" }
                 }
             }
@@ -104,7 +108,8 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, changeMotion: (Boolean) -> Unit, consumed: () -> Unit) {
+fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, changeMotion: (Boolean) -> Unit,
+               oneUiMode: Boolean, changeOneUiMode: (Boolean) -> Unit, consumed: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { Repository.get(context) }
     val products by repo.products.collectAsStateWithLifecycle()
@@ -129,6 +134,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(WatchSort.RECENT) }
     var status by rememberSaveable { mutableStateOf(WatchStatus.ALL) }
+    var oneUiUnlocked by rememberSaveable { mutableStateOf(oneUiMode) }
+    var versionTaps by rememberSaveable { mutableIntStateOf(0) }
     val visible by produceState<List<Product>>(emptyList(), products, query, filter, sort, status) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(products, query, filter, sort, status) }
     }
@@ -311,13 +318,31 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         GroupDivider()
                         PreferenceRow(Icons.Default.Download, "Export price history", "Save observations as a CSV file", { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
                     } }
+                    if (oneUiUnlocked) item { SettingsGroup("Secret lab") {
+                        Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconTile(Icons.Default.PhoneAndroid)
+                            Column(Modifier.weight(1f)) {
+                                Text("One UI 9 mode", style = MaterialTheme.typography.titleMedium)
+                                Text("Samsung-inspired spacing, surfaces and navigation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(oneUiMode, changeOneUiMode)
+                        }
+                    } }
                     item { HelpDisclosure("Stores & price accuracy", "eMAG, Vexio and Altex use public HTML extraction. Dynamic pages, anti-bot protections, sellers and coupons can prevent accurate results. Failed checks never create price points.") }
                     item { HelpDisclosure("Your privacy", "Your watchlist and history stay on this device. Uninstalling clears them. Product URLs go directly to retailers. CSV exports contain product links, UTC timestamps, observed prices and targets.") }
                     item { HelpDisclosure("Understanding discounts", "The discount check compares the advertised reference price with the lowest price observed in the previous 30 days. At least 7 observed days are needed. It is a limited-data signal, not a legal determination.") }
-                    item { Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary)
-                        Text("PriceRadar", style = MaterialTheme.typography.titleMedium)
-                        Text("Version ${BuildConfig.VERSION_NAME} · design preview", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    item { Surface(onClick = {
+                        if (!oneUiUnlocked) {
+                            versionTaps++
+                            if (versionTaps >= 7) { oneUiUnlocked = true; notice = "One UI 9 mode unlocked" }
+                            else if (versionTaps >= 4) notice = "${7 - versionTaps} taps until the secret lab"
+                        }
+                    }, color = androidx.compose.ui.graphics.Color.Transparent) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary)
+                            Text("PriceRadar", style = MaterialTheme.typography.titleMedium)
+                            Text("Version ${BuildConfig.VERSION_NAME} · ${if (oneUiMode) "One UI 9" else "design preview"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     } }
 
                 }
