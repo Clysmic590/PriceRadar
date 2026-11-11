@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
@@ -388,22 +389,32 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
 }
 @Composable private fun ProductCard(p: Product, modifier: Modifier = Modifier, chooseStore: (Retailer) -> Unit, open: () -> Unit) {
     val targetMet = p.price?.let { price -> p.target?.let { price <= it } } == true
-    Card(onClick = open, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+    val previous = p.history.dropLast(1).lastOrNull()?.price
+    val movement = if (previous != null && p.price != null && previous > 0) (p.price!! - previous) * 100.0 / previous else null
+    val accent = when { targetMet -> androidx.compose.ui.graphics.Color(0xFFA8F56A); p.error != null -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.primary }
+    Card(onClick = open, modifier = modifier.fillMaxWidth().border(1.dp, accent.copy(alpha = .18f), RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 StoreBadge(p.retailer)
                 Spacer(Modifier.weight(1f))
-                Text(when { p.paused -> "Paused"; targetMet -> "Target met"; p.error != null -> "Check failed"; else -> "Watching" },
-                    style = MaterialTheme.typography.labelMedium, color = if (p.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Surface(shape = RoundedCornerShape(99.dp), color = accent.copy(alpha = .12f)) {
+                    Text(when { p.paused -> "PAUSED"; targetMet -> "● TARGET HIT"; p.error != null -> "CHECK FAILED"; else -> "● WATCHING" }, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = accent)
+                }
                 Icon(Icons.Default.ChevronRight, null, Modifier.padding(start = 8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(p.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("CURRENT PRICE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = if (targetMet) accent else MaterialTheme.colorScheme.onSurface)
                 Text(p.target?.let { "Your target  ${money(it)}" } ?: "Set a target to catch the right price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            movement?.let { change -> Surface(shape = RoundedCornerShape(12.dp), color = (if (change <= 0) androidx.compose.ui.graphics.Color(0xFFA8F56A) else MaterialTheme.colorScheme.error).copy(alpha=.12f)) {
+                Text("${if (change <= 0) "↓" else "↑"} ${"%.1f".format(kotlin.math.abs(change))}%", Modifier.padding(horizontal = 10.dp, vertical = 7.dp), fontWeight = FontWeight.Bold, color = if (change <= 0) androidx.compose.ui.graphics.Color(0xFFA8F56A) else MaterialTheme.colorScheme.error)
+            } }
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            Text("Explore other stores", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("COMPARE STORES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Retailer.entries.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
             }
@@ -507,8 +518,11 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
 
 @Composable private fun RadarWelcome() {
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(Icons.Default.Bookmarks, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
-        Text("Room for your next find", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Text("Search for a product above, choose a store, and save it here. We’ll watch the price for you.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = RoundedCornerShape(99.dp), color = MaterialTheme.colorScheme.primary.copy(alpha=.12f), modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha=.25f), RoundedCornerShape(99.dp))) {
+            Icon(Icons.Default.Radar, null, Modifier.padding(22.dp).size(44.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Text("Your radar is quiet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Add a product and we’ll start building its price story, spotting drops and watching your target.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+

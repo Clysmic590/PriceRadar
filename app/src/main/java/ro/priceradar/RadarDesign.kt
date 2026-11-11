@@ -1,6 +1,8 @@
 package ro.priceradar
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -11,6 +13,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -19,25 +22,28 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun PageHeading(title: String, subtitle: String) {
     Column(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+        Surface(shape = RoundedCornerShape(99.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)) {
+            Text("LIVE DEAL RADAR", Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        }
+        Text(title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
         Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
 fun WatchOverview(total: Int, active: Int, reached: Int) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(32.dp)) {
-        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    Surface(color = Color.Transparent, shape = RoundedCornerShape(32.dp)) {
+        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF254A19), Color(0xFF14291C), Color(0xFF15251F)))).border(1.dp, Color(0xFFA8F56A).copy(alpha = .25f), RoundedCornerShape(32.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("YOUR RADAR", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(if (active > 0) "●  RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelMedium, color = Color(0xFFA8F56A))
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("$total", fontSize = 52.sp, lineHeight = 56.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text(if (total == 1) "product saved" else "products saved", Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("$total", fontSize = 56.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(if (total == 1) "product tracked" else "products tracked", Modifier.padding(bottom = 8.dp), color = Color(0xFFCAD8CC))
                     }
                 }
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)) {
-                    Icon(Icons.Default.Radar, null, Modifier.padding(16.dp).size(36.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                Surface(shape = CircleShape, color = Color(0xFFA8F56A).copy(alpha = 0.14f), modifier = Modifier.border(1.dp, Color(0xFFA8F56A).copy(alpha=.3f), CircleShape)) {
+                    Icon(Icons.Default.Radar, null, Modifier.padding(18.dp).size(38.dp), tint = Color(0xFFA8F56A))
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -51,19 +57,19 @@ fun WatchOverview(total: Int, active: Int, reached: Int) {
 @Composable
 private fun OverviewMetric(value: String, label: String, modifier: Modifier) {
     Column(modifier) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Color(0xFFB8C7BB))
     }
 }
 
 @Composable
 fun DiscoveryTile(onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha=.18f), RoundedCornerShape(24.dp))) {
         Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconTile(Icons.Default.Search)
             Column(Modifier.weight(1f)) {
-                Text("Find something worth watching", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Browse eMAG, Vexio & Altex websites", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Hunt for a better deal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Scan eMAG, Vexio & Altex", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Default.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
         }
@@ -129,3 +135,4 @@ fun StoreBadge(store: Retailer) {
         Text(store.label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
+

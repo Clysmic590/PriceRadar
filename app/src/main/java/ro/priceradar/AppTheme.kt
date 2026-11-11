@@ -10,14 +10,15 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun RadarTheme(content: @Composable () -> Unit) {
     val colors = darkColorScheme(
-        primary = Color(0xFFA8C7FF), onPrimary = Color(0xFF092650),
-        primaryContainer = Color(0xFFB6D0FF), onPrimaryContainer = Color(0xFF0B2449),
-        background = Color(0xFF090B10), surface = Color(0xFF191D25),
-        surfaceVariant = Color(0xFF243146), onSurfaceVariant = Color(0xFFC3C6D0),
-        secondary = Color(0xFFBAC8ED), secondaryContainer = Color(0xFF283E65),
-        onSecondaryContainer = Color(0xFFDCE5FF),
-        surfaceContainer = Color(0xFF191D25), surfaceContainerHigh = Color(0xFF222832),
-        surfaceContainerHighest = Color(0xFF243146)
+        primary = Color(0xFFA8F56A), onPrimary = Color(0xFF163800),
+        primaryContainer = Color(0xFF244318), onPrimaryContainer = Color(0xFFD3FFB1),
+        background = Color(0xFF080B09), surface = Color(0xFF111713),
+        surfaceVariant = Color(0xFF1B251E), onSurfaceVariant = Color(0xFFB8C7BB),
+        secondary = Color(0xFFFFB95D), secondaryContainer = Color(0xFF493314),
+        onSecondaryContainer = Color(0xFFFFDDB1),
+        tertiary = Color(0xFF79D7FF), tertiaryContainer = Color(0xFF123E50),
+        surfaceContainer = Color(0xFF111713), surfaceContainerHigh = Color(0xFF18201A),
+        surfaceContainerHighest = Color(0xFF202A22), outlineVariant = Color(0xFF344238)
     )
     val typography = Typography().let {
         it.copy(headlineLarge = it.headlineLarge.copy(fontWeight = FontWeight.Bold),
@@ -25,8 +26,9 @@ fun RadarTheme(content: @Composable () -> Unit) {
     }
     MaterialTheme(
         colorScheme = colors,
-        shapes = Shapes(medium = RoundedCornerShape(28.dp), large = RoundedCornerShape(28.dp), extraLarge = RoundedCornerShape(32.dp)),
+        shapes = Shapes(small = RoundedCornerShape(14.dp), medium = RoundedCornerShape(22.dp), large = RoundedCornerShape(28.dp), extraLarge = RoundedCornerShape(36.dp)),
         typography = typography,
         content = content
     )
 }
+
