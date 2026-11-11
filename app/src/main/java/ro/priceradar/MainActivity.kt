@@ -23,6 +23,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -119,7 +121,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(products, query, filter, sort, status) }
     }
     val couponProducts = remember(products) { products.filter { it.coupons.isNotEmpty() } }
-    val targetCount = remember(products) { products.count { it.target != null } }
+    val activeCount = remember(products) { products.count { !it.paused } }
+    val reachedCount = remember(products) { products.count { p -> p.price?.let { price -> p.target?.let { price <= it } } == true } }
     val watchScroll = rememberLazyListState()
     val couponScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
@@ -185,9 +188,22 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 navigationIcon = { if (product != null) IconButton(onClick = { selected = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = { IconButton(onClick = { refresh() }, enabled = !busy && !loading) { RefreshIcon(busy) } })
         },
-        bottomBar = { if (product == null) NavigationBar {
-            listOf("Watchlist", "Coupons", "Settings").forEachIndexed { i, title ->
-                NavigationBarItem(selected = tab == i, onClick = { tab = i }, label = { Text(title) }, icon = { val pop = animateFloatAsState(if (tab == i && !reducedMotion) 1.10f else 1f, if (reducedMotion) snap() else spring(dampingRatio = Spring.DampingRatioNoBouncy), label = "tab focus"); Icon(when(i) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings }, title, Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }) })
+        bottomBar = { if (product == null) Surface(
+            modifier = Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp),
+            shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("Watchlist", "Coupons", "Settings").forEachIndexed { i, title ->
+                    Surface(onClick = { tab = i }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp),
+                        color = if (tab == i) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent) {
+                        Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(when(i) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings }, null,
+                                tint = if (tab == i) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(title, style = MaterialTheme.typography.labelMedium,
+                                color = if (tab == i) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
         } },
         snackbarHost = {
@@ -196,10 +212,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 action = { TextButton(onClick = { notice = null }) { Text("Dismiss") } }
             ) { Text(message) } }
         },
-        floatingActionButton = { if (product == null && tab == 0) ExtendedFloatingActionButton(onClick = { discoveryQuery = ""; discoveryStore = null; discovering = true }, icon = { Icon(Icons.Default.Search, null) }, text = { Text("Find product") }, containerColor = MaterialTheme.colorScheme.primary) },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        Column(Modifier.padding(padding).fillMaxSize().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 840.dp)) {
             Box(Modifier.fillMaxWidth().height(4.dp)) {
                 if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
@@ -219,28 +234,25 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         remove = { scope.launch { repo.remove(displayProduct.id); selected = null } })
                 } else when (screen.tab) {
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
-                    LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { Column(Modifier.padding(vertical = 12.dp)) {
-                        Text("YOUR PERSONAL PRICE RADAR", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                        Text("Watch prices.\nCatch the drop.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                        Text("eMAG, Vexio & Altex, together in your watchlist.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
-                    } }
-                    item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Stat("${products.size}", "Tracking", Modifier.weight(1f))
-                        Stat("${targetCount}", "Price targets", Modifier.weight(1f))
-                    } }
-                    item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        (listOf("All") + Retailer.entries.map { it.label }).forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
-                    } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Your watchlist", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { showFilters = !showFilters }) { Icon(Icons.Default.Tune, null); Text(if (showFilters) "Hide filters" else "Filters") }
-                    } }
-                    item { OutlinedTextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search products") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
-                    if (showFilters) item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchSort.entries.forEach { option -> FilterChip(selected = sort == option, onClick = { sort = option }, label = { Text(option.label) }) } } }
-                    if (showFilters) item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { WatchStatus.entries.forEach { option -> FilterChip(selected = status == option, onClick = { status = option }, label = { Text(option.label) }) } } }
+                    LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    item { PageHeading("Your watchlist", "A little patience. A better price.") }
+                    item { WatchOverview(products.size, activeCount, reachedCount) }
+                    item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
+                    if (products.isNotEmpty()) {
+                        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Saved products", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            TextButton(onClick = { showFilters = true }) { Icon(Icons.Default.Tune, null); Spacer(Modifier.width(6.dp)); Text("Filter & sort") }
+                        } }
+                        item { TextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Search your watchlist") }, shape = RoundedCornerShape(24.dp), singleLine = true,
+                            colors = TextFieldDefaults.colors(focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent),
+                            leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
+                        item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            (listOf("All") + Retailer.entries.map { it.label }).forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
+                        } }
+                    }
                     if (products.isEmpty() && !loading) item { RadarWelcome() }
-                    if (products.isNotEmpty()) item { Text("${visible.size} of ${products.size} products · pull down to refresh", style = MaterialTheme.typography.labelMedium) }
+                    if (products.isNotEmpty()) item { Text("${visible.size} products · ${sort.label} · ${status.label}", style = MaterialTheme.typography.labelMedium) }
                     if (products.isNotEmpty() && visible.isEmpty()) item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("No matching products. Try another search or filter.")
@@ -254,51 +266,72 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 }
                 }
                 1 -> LazyColumn(state = couponScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { Text("Coupon radar", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
-                    item { InfoCard("Public offers, in one place", "Coupon text found on tracked product pages appears here. Availability and checkout eligibility must be verified with the retailer.") }
+                    item { PageHeading("Offers for you", "Coupons from the products you follow.") }
+                    item { HelpDisclosure("How offers work", "Coupon text found on tracked product pages appears here. Check availability and eligibility with the retailer at checkout.") }
                     val found = couponProducts
                     if (found.isEmpty()) item { Text("No coupon text detected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
                 }
                 else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { Text("Make it yours", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
-                    item { Text("Set your pace. We’ll keep an eye on prices.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    item { Card(onClick = { showRefreshSchedule = true }) {
-                        Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Icon(Icons.Default.Schedule, null, tint = MaterialTheme.colorScheme.primary)
-                            Column(Modifier.weight(1f)) { Text("Automatic refresh", style = MaterialTheme.typography.titleMedium); Text("Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", color = MaterialTheme.colorScheme.primary) }
-                            Icon(Icons.Default.ChevronRight, "Change refresh interval")
-                        }
+                    item { PageHeading("Settings", "Your radar. Your rhythm.") }
+                    item { SettingsGroup("Price monitoring") {
+                        PreferenceRow(Icons.Default.Schedule, "Automatic refresh", "Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", { showRefreshSchedule = true })
+                        GroupDivider()
+                        PreferenceRow(Icons.Default.Notifications, "Notifications", if (notificationsEnabled) "Enabled · price alerts are on" else "Disabled · tap to enable", {
+                            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            else openNotificationSettings()
+                        })
+                        GroupDivider()
+                        PreferenceRow(Icons.Default.NotificationsActive, "Send test notification", "Check how an alert looks", {
+                            notificationsEnabled = Alerts.enabled(context)
+                            if (notificationsEnabled) { Alerts.show(context, "test", "PriceRadar", "Your price radar is ready"); notice = "Test notification sent" }
+                            else { notice = "Notifications are disabled in Android settings"; openNotificationSettings() }
+                        })
                     } }
-                    item { Text("Checks need internet. Android may delay them to save battery. Pull down on your watchlist for an immediate check.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    item { Card { Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text("Reduce motion", fontWeight = FontWeight.Bold); Text("Lighter transitions for slower phones. Enabled automatically on low-memory devices.", style = MaterialTheme.typography.bodySmall) }
-                        Switch(reducedMotion, changeMotion)
-                    } } }
-                    item { OutlinedButton(onClick = { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Export price history (CSV)") } }
-                    item { Text("Export includes product links, UTC timestamps, observed prices and targets. Choose where to save it.", style = MaterialTheme.typography.bodySmall) }
-
-                    item { Text(if (notificationsEnabled) "Notifications enabled" else "Notifications disabled · allow notifications and the Price alerts category in Android settings") }
-                    item { Button(onClick = {
-                        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        else openNotificationSettings()
-                    }) { Text(if (notificationsEnabled) "Notification settings" else "Enable notifications") } }
-                    item { OutlinedButton(onClick = {
-                        notificationsEnabled = Alerts.enabled(context)
-                        if (notificationsEnabled) {
-                            Alerts.show(context, "test", "PriceRadar", "Your price radar is ready")
-                            notice = "Test notification sent"
-                        } else {
-                            notice = "Notifications are disabled in Android settings"
-                            openNotificationSettings()
+                    item { Text("Android may delay background checks to save battery. Pull down on your watchlist to check now.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item { SettingsGroup("Comfort & data") {
+                        Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconTile(Icons.Default.Animation)
+                            Column(Modifier.weight(1f)) { Text("Reduce motion", style = MaterialTheme.typography.titleMedium); Text("Fewer effects, lighter navigation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Switch(reducedMotion, changeMotion)
                         }
-                    }) { Text("Send test notification") } }
-                    item { InfoCard("Integration status · needs live testing", "eMAG, Vexio and Altex use public HTML extraction. Dynamic pages, anti-bot protections, marketplace sellers and coupon conditions may prevent accurate results. Failed checks never create price points.") }
-                    item { InfoCard("Private by design", "Your watchlist and observations stay on this device. Uninstalling clears them. Product URLs are sent directly to the selected retailer; no account or tracking backend is used.") }
-                    item { InfoCard("Fake-discount detector", "Compares the advertised reference price with the lowest price observed in the previous 30 days. At least 7 distinct observed days are required. This is a limited-data signal, not a legal determination.") }
+                        GroupDivider()
+                        PreferenceRow(Icons.Default.Download, "Export price history", "Save observations as a CSV file", { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
+                    } }
+                    item { HelpDisclosure("Stores & price accuracy", "eMAG, Vexio and Altex use public HTML extraction. Dynamic pages, anti-bot protections, sellers and coupons can prevent accurate results. Failed checks never create price points.") }
+                    item { HelpDisclosure("Your privacy", "Your watchlist and history stay on this device. Uninstalling clears them. Product URLs go directly to retailers. CSV exports contain product links, UTC timestamps, observed prices and targets.") }
+                    item { HelpDisclosure("Understanding discounts", "The discount check compares the advertised reference price with the lowest price observed in the previous 30 days. At least 7 observed days are needed. It is a limited-data signal, not a legal determination.") }
+                    item { Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("PriceRadar", style = MaterialTheme.typography.titleMedium)
+                        Text("UI remake · 1.4.0 preview 1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } }
+
                 }
             } }
+        }
+    }
+    if (showFilters) ModalBottomSheet(onDismissRequest = { showFilters = false }) {
+        LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { Text("Make it easy to find", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+            item { Text("SORT BY", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium) }
+            items(WatchSort.entries) { option ->
+                Surface(onClick = { sort = option }, color = androidx.compose.ui.graphics.Color.Transparent) {
+                    Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(sort == option, onClick = null); Text(option.label, Modifier.padding(start = 12.dp))
+                    }
+                }
+            }
+            item { HorizontalDivider(); Text("SHOW", Modifier.padding(top = 16.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium) }
+            items(WatchStatus.entries) { option ->
+                Surface(onClick = { status = option }, color = androidx.compose.ui.graphics.Color.Transparent) {
+                    Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(status == option, onClick = null); Text(option.label, Modifier.padding(start = 12.dp))
+                    }
+                }
+            }
+            item { Button(onClick = { showFilters = false }, modifier = Modifier.fillMaxWidth()) { Text("Show products") } }
         }
     }
     if (showRefreshSchedule) {
@@ -354,24 +387,29 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, fontWeight = FontWeight.SemiBold); Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) } }
 }
 @Composable private fun ProductCard(p: Product, modifier: Modifier = Modifier, chooseStore: (Retailer) -> Unit, open: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val reducedMotion = LocalReducedMotion.current
-    val pressScale = animateFloatAsState(if (pressed && !reducedMotion) 0.985f else 1f,
-        if (reducedMotion) snap() else tween(130, easing = FastOutSlowInEasing), label = "product press")
-    Card(onClick = open, interactionSource = interaction, modifier = modifier.fillMaxWidth().graphicsLayer { scaleX = pressScale.value; scaleY = pressScale.value }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(p.retailer.label.uppercase(), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium); if (p.coupons.isNotEmpty()) Text("Coupon detected", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium) }
-        Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-        if (p.paused) Text("Tracking paused", color = MaterialTheme.colorScheme.secondary)
-        Text(p.price?.let(::money) ?: "Waiting for first check", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        p.target?.let { Text("Target ${money(it)}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Text("Find this product name at", style = MaterialTheme.typography.labelSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Retailer.entries.forEach { store -> AssistChip(onClick = { chooseStore(store) }, label = { Text(store.label) }) }
+    val targetMet = p.price?.let { price -> p.target?.let { price <= it } } == true
+    Card(onClick = open, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                StoreBadge(p.retailer)
+                Spacer(Modifier.weight(1f))
+                Text(when { p.paused -> "Paused"; targetMet -> "Target met"; p.error != null -> "Check failed"; else -> "Watching" },
+                    style = MaterialTheme.typography.labelMedium, color = if (p.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.ChevronRight, null, Modifier.padding(start = 8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(p.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(p.target?.let { "Your target  ${money(it)}" } ?: "Set a target to catch the right price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Text("Explore other stores", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Retailer.entries.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
+            }
+            Text(if (p.checked == 0L) "Waiting for the first check" else "Last checked ${stamp(p.checked)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (p.error != null) Text("Check failed · tap for details", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
-        else Text(if (p.checked == 0L) "Not checked yet" else "Checked ${stamp(p.checked)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } }
+    }
 }
 private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(time))
 
@@ -390,7 +428,16 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
     val highPrice = remember(points) { points.maxOfOrNull { it.price } }
     val assessment = remember(p.history, p.reference) { discountAssessment(p) }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        item { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(top = 16.dp)) }
+        item { StoreBadge(p.retailer) }
+        item { Text(p.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        item { Surface(shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("LATEST OBSERVED PRICE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(p.target?.let { "Your target: ${money(it)}" } ?: "Add a target below to get notified", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        } }
+
         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold); Text("Pause keeps your history and skips checks and alerts", style = MaterialTheme.typography.bodySmall) }; Switch(!p.paused, { pause(!it) }) } }
         p.price?.let { price -> p.target?.let { target -> item { InfoCard("Target progress", if (price <= target) "Your target is met · ${money(target - price)} below target" else "${money(price - target)} to go · target ${money(target)}") } } }
         p.error?.let { item { InfoCard("Last check failed", "$it\nLast successful price is preserved.") } }
@@ -459,19 +506,9 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
 }
 
 @Composable private fun RadarWelcome() {
-    val reducedMotion = LocalReducedMotion.current
-    var arrived by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { arrived = true }
-    val pop = animateFloatAsState(if (arrived || reducedMotion) 1f else 0.8f,
-        if (reducedMotion) snap() else tween(220, easing = FastOutSlowInEasing), label = "radar hello")
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }) {
-                Icon(Icons.Default.Radar, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.secondary)
-            }
-            Text("Your next great deal starts here", fontWeight = FontWeight.SemiBold)
-            Text("Tap Find product to search eMAG, Vexio or Altex by name. Price history starts with the first successful check.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(Icons.Default.Bookmarks, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+        Text("Room for your next find", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text("Search for a product above, choose a store, and save it here. We’ll watch the price for you.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

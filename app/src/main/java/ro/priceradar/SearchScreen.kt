@@ -40,6 +40,7 @@ fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = nul
     var query by rememberSaveable { mutableStateOf(initialQuery.take(120)) }
     var submitted by rememberSaveable { mutableStateOf("") }
     var selectedStore by rememberSaveable { mutableStateOf(initialStore) }
+    var storeMenuOpen by rememberSaveable { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<StoreSearch>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var browser by remember { mutableStateOf<Pair<Retailer, String>?>(null) }
@@ -49,6 +50,13 @@ fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = nul
         if (searching) return
         if (query.trim().length < 2) { error = "Enter at least two characters"; return }
         keyboard?.hide()
+        error = null
+        results = emptyList()
+        if (selectedStore == Retailer.VEXIO) {
+            submitted = query.trim().take(120)
+            browser = Retailer.VEXIO to storeSearchUrl(Retailer.VEXIO, submitted)
+            return
+        }
         submitted = query.trim().take(120)
         results = emptyList(); error = null; searching = true
         val term = submitted
@@ -69,35 +77,40 @@ fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = nul
             val browsing = browser
             if (browsing != null) {
                 StoreBrowser(browsing.first, browsing.second, onClose = { browser = null }, onTrack = onTrack)
-            } else Scaffold(topBar = { TopAppBar(title = { Text("Find a product") }, navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close search") } }, actions = { TextButton(onClick = onPasteLink) { Text("Paste link") } }) }) { padding ->
+            } else Scaffold(topBar = { TopAppBar(title = { Text("Explore stores") }, navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close search") } }, actions = { TextButton(onClick = onPasteLink) { Text("Paste link") } }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize()) {
+                    Column(Modifier.padding(horizontal = 20.dp)) { PageHeading("Find your next favourite", "One search. Three stores to explore.") }
                     OutlinedTextField(query, { query = it.take(120) }, Modifier.fillMaxWidth().padding(horizontal = 20.dp), label = { Text("Product name or model") }, singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Search, null) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }))
-                    Button(onClick = { search() }, enabled = !searching && query.trim().length >= 2, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(if (searching) "Searching stores…" else "Search products") }
-                    error?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error) }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selectedStore == null, { selectedStore = null }, label = { Text("All stores") })
-                        Retailer.entries.forEach { store -> FilterChip(selectedStore == store, { selectedStore = store }, label = { Text(store.label) }) }
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+                        TextButton(onClick = { storeMenuOpen = true }) { Text("Search in: ${selectedStore?.label ?: "All stores"} ▾") }
+                        DropdownMenu(expanded = storeMenuOpen, onDismissRequest = { storeMenuOpen = false }) {
+                            DropdownMenuItem(text = { Text("All stores") }, onClick = { selectedStore = null; storeMenuOpen = false })
+                            Retailer.entries.forEach { store ->
+                                DropdownMenuItem(text = { Text(store.label) }, onClick = { selectedStore = store; storeMenuOpen = false })
+                            }
+                        }
                     }
+                    Button(onClick = { search() }, enabled = !searching && query.trim().length >= 2, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 52.dp)) { Text(if (searching) "Searching stores…" else "Search products") }
+                    error?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error) }
                     if (submitted.isNotBlank()) Text("Results for $submitted", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.labelMedium)
                     if (searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                     val stores = Retailer.entries.filter { selectedStore == null || it == selectedStore }
                     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        item { Text("Choose a store to buy from. Results can be different models, sellers or variants; check the store page before buying.", style = MaterialTheme.typography.bodySmall) }
-                        stores.forEach { store ->
+                        if (submitted.isNotBlank()) stores.forEach { store ->
                             item(key = "store-${store.name}") {
                                 OutlinedButton(onClick = {
                                     val term = submitted.ifBlank { query.trim() }
                                     if (term.length >= 2) browser = store to storeSearchUrl(store, term) else error = "Enter a product name first"
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Browse ${store.label} results") }
+                                }, modifier = Modifier.fillMaxWidth()) { Text(if (store == Retailer.VEXIO) "Open Vexio results" else "Browse ${store.label} results") }
                             }
                             val result = results.find { it.retailer == store }
                             if (result?.error != null) item(key = "error-${store.name}") { Text("${store.label}: ${result.error}", style = MaterialTheme.typography.bodySmall) }
                             items(result?.products.orEmpty(), key = { it.url }, contentType = { "search-product" }) { product ->
                                 Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(product.retailer.label, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                    Text(product.name, maxLines = 3)
-                                    Text(product.price?.let { "${money(it)} · search preview" } ?: "See current price at store")
+                                    StoreBadge(product.retailer)
+                                    Text(product.name, maxLines = 3, style = MaterialTheme.typography.titleMedium)
+                                    Text(product.price?.let { money(it) } ?: "See current price at store", style = MaterialTheme.typography.headlineSmall)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(onClick = { onTrack(product.url) }) { Text("Track") }
                                         OutlinedButton(onClick = { browser = store to product.url }) { Text("View / buy") }
@@ -105,8 +118,8 @@ fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = nul
                                 } }
                             }
                         }
-                        if (submitted.isBlank()) item { Text("No link needed: type a name, search, then track a result. If a store cannot provide native results, browse its own search and tap Track this product.") }
-                        if (results.isNotEmpty()) item { Text("Search previews are not added to price history. Tracking checks the product page separately.", style = MaterialTheme.typography.bodySmall) }
+                        if (submitted.isBlank()) item { Text("Search by name or model. No link needed.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        if (results.isNotEmpty()) item { Text("Check the model and seller before buying. Search previews aren’t saved as price history.", style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
@@ -151,12 +164,16 @@ private fun StoreBrowser(store: Retailer, startUrl: String, onClose: () -> Unit,
                     settings.setSupportMultipleWindows(false)
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                            runCatching { Retailer.fromUrl(request.url.toString()) != store }.getOrDefault(true)
+                            request.isForMainFrame && runCatching { Retailer.fromUrl(request.url.toString()) != store }.getOrDefault(true)
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             loading = true; error = null
                             if (runCatching { Retailer.fromUrl(url) == store }.getOrDefault(false)) currentUrl = url
                         }
-                        override fun onPageFinished(view: WebView, url: String) { loading = false }
+                        override fun onPageFinished(view: WebView, url: String) {
+                            loading = false
+                            val finishedUrl = view.url ?: url
+                            if (runCatching { Retailer.fromUrl(finishedUrl) == store }.getOrDefault(false)) currentUrl = finishedUrl
+                        }
                         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                             if (runCatching { Retailer.fromUrl(url) == store }.getOrDefault(false)) currentUrl = url
                         }

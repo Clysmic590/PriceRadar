@@ -2,12 +2,18 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
-## Upcoming UI and refresh update
-- Refreshed navy surfaces, tighter cards, a simpler watchlist and collapsible sort/status controls.
-- Settings → Automatic refresh opens a picker for 1, 3, 6, 12 or 24 hours. Save updates the existing unique WorkManager schedule; Cancel preserves it. The default remains six hours and the choice survives restart.
-- Refresh feedback overlays the page without shifting content; the progress bar keeps a fixed slot.
-- Screen changes fade a single rendering layer instead of simultaneously composing two screens. Removed list placement animation to reduce work during filtering; Reduce motion remains available.
-- Run `.github/scripts/refresh-settings-smoke.py` with `adb` on PATH against a disposable emulator after the startup smoke check to verify picker choices, save/cancel and persistence.
+## Vexio fixes (unreleased)
+- Recognize Vexio's category/brand/product-ID links as trackable products, retaining legacy category/product links and retailer/HTTPS validation.
+- Vexio search returns a JavaScript shell. Selecting Vexio and searching now opens the store's interactive results directly; all-store search offers an explicit Open Vexio results action instead of claiming there are no matches.
+- Refresh the browser's selected URL when navigation finishes and allow website subframes while restricting top-level navigation to the selected retailer.
+
+## UI remake — 1.4.0-preview.1
+- Completely rebuilt watchlist: large overview, dedicated search tile, store-labelled price cards, and filter/sort sheet.
+- New pill navigation, grouped settings, redesigned product price header, and updated product search.
+- Settings → Automatic refresh opens a 1/3/6/12/24-hour picker, with persistent scheduling and cancel support.
+- Single-layer screen fades and ripple-only product presses reduce rendering work. Reduce motion remains available.
+- APK uses version code 8 and version name 1.4.0-preview.1, so installing it is visibly distinguishable from the old preview. The app's Settings footer identifies the remake.
+- Runtime smoke checks assert the new screen text, exercise schedule persistence, and capture watchlist/search/settings screenshots.
 
 ## New in 1.3.1
 - Fixes an immediate optimized-build startup crash: Room/WorkManager reflectively constructs `WorkDatabase_Impl`, whose no-argument constructor R8 had removed. An explicit keep rule preserves it.

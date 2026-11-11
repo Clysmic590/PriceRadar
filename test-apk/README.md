@@ -1,0 +1,1 @@
+Test APK only; no GitHub release. Includes the full UI remake, Vexio product recognition and interactive search, and the simplified store selector. Internal version 1.4.0-preview.1 (code 8), signed with the existing development key. Install over the previous preview. Unit tests, release lint, and optimized build passed; physical-device testing remains with the user.

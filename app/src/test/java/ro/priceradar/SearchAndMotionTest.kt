@@ -51,6 +51,35 @@ class SearchAndMotionTest {
             assertTrue(url.contains("%2B"))
         }
     }
+    @Test fun vexioRecognizesBrandProductPathsButRejectsBrowsingAndForeignPages() {
+        listOf(
+            "https://www.vexio.ro/huse-telefoane/samsung/123456-capac-protectie-s25-ultra/",
+            "https://www.vexio.ro/accesorii-audio-hi-fi/ugreen/1785176-av170-2x-rca-cable-cinch-jack-3-5mm-2m-black/",
+            "https://vexio.ro/casti/123-headphones/?utm_source=test#details"
+        ).forEach { assertTrue(it, isProductUrl(it, Retailer.VEXIO)) }
+        listOf(
+            "https://www.vexio.ro/search/?q=samsung",
+            "https://www.vexio.ro/huse-telefoane/samsung/",
+            "https://www.vexio.ro/shopping/add-to-cart/",
+            "https://vexio.ro.evil.com/huse/samsung/123-case/",
+            "https://user@vexio.ro/huse/samsung/123-case/",
+            "https://www.vexio.ro:444/huse/samsung/123-case/"
+        ).forEach { assertFalse(it, isProductUrl(it, Retailer.VEXIO)) }
+    }
+    @Test fun vexioPublicCardsWithBrandPathsCanBeParsed() {
+        val html = """<div class="col-item thumbnail"><div class="photo"><a href="/accesorii-audio-hi-fi/ugreen/1785176-av170-cable/"><img alt="Cable"></a></div>
+            <h2 class="name"><a href="/accesorii-audio-hi-fi/ugreen/1785176-av170-cable/" title="AV170 cable">AV170 cable</a></h2></div>"""
+        val product = ProductSearchClient().parse(Jsoup.parse(html), Retailer.VEXIO).single()
+        assertEquals("AV170 cable", product.name)
+        assertTrue(isProductUrl(product.url, Retailer.VEXIO))
+        assertNull(product.price)
+    }
+    @Test fun vexioSearchExplainsInteractiveResultsInsteadOfClaimingNoMatches() = kotlinx.coroutines.runBlocking {
+        val result = ProductSearchClient().search(Retailer.VEXIO, "Samsung S25 Ultra")
+        assertTrue(result.products.isEmpty())
+        assertTrue(result.error.orEmpty().contains("loads search results"))
+        assertEquals("https://www.vexio.ro/search/?q=Samsung+S25+Ultra", storeSearchUrl(Retailer.VEXIO, "Samsung S25 Ultra"))
+    }
     @Test fun chartGeometryIsBoundedAndPreservesExtremesAndEndpoints() {
         val history = (0 until 100_000).map { i -> Observation(i.toLong(), when (i) { 54321 -> 100L; 54322 -> 999999L; else -> 10000L }) }
         val sampled = chartSamples(history)

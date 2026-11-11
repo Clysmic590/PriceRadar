@@ -31,7 +31,7 @@ fun isProductUrl(url: String, retailer: Retailer): Boolean = runCatching {
     when (retailer) {
         Retailer.EMAG -> Regex("/pd/[^/]+", RegexOption.IGNORE_CASE).containsMatchIn(path)
         Retailer.ALTEX -> Regex("/cpd/[^/]+", RegexOption.IGNORE_CASE).containsMatchIn(path)
-        Retailer.VEXIO -> Regex("^/[^/]+/\\d+-[^/]+/?$").matches(path)
+        Retailer.VEXIO -> Regex("^/[^/]+/(?:[^/]+/)?\\d+-[^/]+/?$").matches(path)
     }
 }.getOrDefault(false)
 
@@ -43,6 +43,10 @@ class ProductSearchClient {
     suspend fun search(retailer: Retailer, query: String): StoreSearch = requestSlots.withPermit { withContext(Dispatchers.IO) {
         val clean = query.trim().take(120)
         require(clean.length >= 2) { "Enter at least two characters" }
+        // Vexio's public search response is a JavaScript shell, not a product list.
+        // Use its visible interactive search instead of reporting zero matches.
+        if (retailer == Retailer.VEXIO) return@withContext StoreSearch(retailer, emptyList(),
+            "Vexio loads search results in its website. Open Vexio results to choose a product.")
         val key = retailer to clean.lowercase(java.util.Locale.ROOT)
         val cached = synchronized(cache) { cache[key]?.takeIf { System.currentTimeMillis() - it.time < 300_000 } }
         if (cached != null) return@withContext StoreSearch(retailer, cached.products)
@@ -91,7 +95,7 @@ class ProductSearchClient {
         doc.select("script[type=application/ld+json]").take(20).forEach {
             runCatching { visit(org.json.JSONTokener(it.data()).nextValue()) }
         }
-        val cards = doc.select(".card-item, .product-box, .product-item, .product-layout, .Products-item, [data-testid=product-card], [itemtype*=schema.org/Product]")
+        val cards = doc.select(".card-item, .product-box, .product-item, .product-layout, .Products-item, .col-item, [data-testid=product-card], [itemtype*=schema.org/Product]")
         cards.take(100).forEach { card ->
             val link = card.select("a[href]").firstOrNull { a ->
                 val absolute = runCatching { URI("https://www.${retailer.host}").resolve(a.attr("href")).toString() }.getOrDefault("")
