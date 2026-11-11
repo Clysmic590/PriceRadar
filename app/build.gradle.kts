@@ -15,7 +15,7 @@ android {
         }
     }
     defaultConfig { applicationId = "ro.priceradar"; minSdk = 26; targetSdk = 37; versionCode = 10; versionName = "1.5.1" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
