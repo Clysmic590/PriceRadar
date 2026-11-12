@@ -130,6 +130,93 @@ fun PreferenceRow(icon: ImageVector, title: String, description: String, onClick
 fun GroupDivider() { HorizontalDivider(Modifier.padding(start = 78.dp, end = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)) }
 
 @Composable
+fun OneUiSettingsHeader() {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 54.dp, bottom = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Settings", fontSize = 42.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).sp)
+        Text("PriceRadar", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun OneUiSettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text(
+            title,
+            Modifier.padding(start = 18.dp),
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold
+        )
+        Surface(shape = RoundedCornerShape(24.dp), color = Color(0xFF171717)) {
+            Column(Modifier.fillMaxWidth(), content = content)
+        }
+    }
+}
+
+@Composable
+fun OneUiSettingsRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    trailing: @Composable (() -> Unit)? = null
+) {
+    Surface(onClick = onClick, enabled = enabled, color = Color.Transparent) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primary) {
+                Icon(icon, null, Modifier.padding(10.dp).size(23.dp), tint = Color.White)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
+                    color = if (enabled) Color(0xFFF5F5F5) else Color(0xFF777777))
+                Text(description, fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFFAAAAAA))
+            }
+            if (trailing != null) trailing() else Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF777777))
+        }
+    }
+}
+
+@Composable
+fun OneUiDivider() {
+    HorizontalDivider(Modifier.padding(start = 77.dp), color = Color(0xFF303030), thickness = 0.7.dp)
+}
+
+@Composable
+fun OneUiAccentPicker(selected: Color, onSelected: (Color) -> Unit) {
+    val colors = listOf(
+        Color(0xFF4C8DFF), Color(0xFF8B7CFF), Color(0xFFDA6CFF),
+        Color(0xFFFF5C8A), Color(0xFFFF7A45), Color(0xFF34C98F), Color(0xFF19B9D1)
+    )
+    Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+        Text("Colour palette", fontSize = 17.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF5F5F5))
+        Text("Choose the accent used for icons, switches and selected controls.", fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFFAAAAAA))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            colors.forEach { color ->
+                Surface(
+                    onClick = { onSelected(color) },
+                    shape = CircleShape,
+                    color = color,
+                    border = if (selected.value == color.value) androidx.compose.foundation.BorderStroke(3.dp, Color.White) else null,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    if (selected.value == color.value) Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Check, null, Modifier.size(19.dp), tint = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun HelpDisclosure(title: String, body: String) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Surface(onClick = { expanded = !expanded }, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
