@@ -111,5 +111,15 @@ jobs:
           (assets / 'app-release.apk').rename(apk)
           checksums = assets / 'SHA256SUMS.txt'
           checksums.write_text(hashlib.sha256(apk.read_bytes()).hexdigest() + '  ' + apk.name + '\n')
-          subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version}', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
+          release_exists = subprocess.run(
+              ['gh', 'release', 'view', tag],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          ).returncode == 0
+          if release_exists:
+              subprocess.run(['gh', 'release', 'edit', tag, '--title', f'PriceRadar {version} — Bug Fix', '--notes-file', '.github/release-notes.md', '--latest'], check=True)
+              subprocess.run(['gh', 'release', 'upload', tag, '--clobber', str(apk), str(checksums)], check=True)
+          else:
+              subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version} — Bug Fix', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
           PY
+
