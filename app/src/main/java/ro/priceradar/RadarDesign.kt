@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -190,6 +191,22 @@ fun OneUiDivider() {
 }
 
 @Composable
+fun OneUiSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Color.White,
+            checkedTrackColor = MaterialTheme.colorScheme.primary,
+            checkedBorderColor = Color.Transparent,
+            uncheckedThumbColor = Color(0xFF9A9AA2),
+            uncheckedTrackColor = Color(0xFF35353B),
+            uncheckedBorderColor = Color(0xFF74747D)
+        )
+    )
+}
+
+@Composable
 fun OneUiAccentPicker(selected: Color, onSelected: (Color) -> Unit) {
     val colors = listOf(
         Color(0xFF4C8DFF), Color(0xFF8B7CFF), Color(0xFFDA6CFF),
@@ -204,10 +221,10 @@ fun OneUiAccentPicker(selected: Color, onSelected: (Color) -> Unit) {
                     onClick = { onSelected(color) },
                     shape = CircleShape,
                     color = color,
-                    border = if (selected.value == color.value) androidx.compose.foundation.BorderStroke(3.dp, Color.White) else null,
+                    border = if (selected.toArgb() == color.toArgb()) androidx.compose.foundation.BorderStroke(3.dp, Color.White) else null,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    if (selected.value == color.value) Box(contentAlignment = Alignment.Center) {
+                    if (selected.toArgb() == color.toArgb()) Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Check, null, Modifier.size(19.dp), tint = Color.White)
                     }
                 }
