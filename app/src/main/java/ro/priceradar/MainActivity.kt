@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalAccessibilityManager
@@ -90,18 +91,14 @@ class MainActivity : ComponentActivity() {
             }
             val preferences = remember { getSharedPreferences("performance", MODE_PRIVATE) }
             var reducedMotion by remember { mutableStateOf(preferences.getBoolean("reduced_motion", getSystemService(ActivityManager::class.java).isLowRamDevice)) }
-            var oneUiMode by remember { mutableStateOf(preferences.getBoolean("one_ui_9_mode", true)) }
             var accentArgb by remember { mutableIntStateOf(preferences.getInt("one_ui_accent", 0xFF4C8DFF.toInt())) }
             CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
-                RadarTheme(oneUiMode, Color(accentArgb)) {
+                RadarTheme(true, Color(accentArgb)) {
                     PriceRadar(shared, openedProduct, { openedProduct = null }, { value ->
                         reducedMotion = value
                         preferences.edit().putBoolean("reduced_motion", value).apply()
-                    }, oneUiMode, { value ->
-                        oneUiMode = value
-                        preferences.edit().putBoolean("one_ui_9_mode", value).apply()
                     }, Color(accentArgb), { color ->
-                        accentArgb = color.value.toLong().toInt()
+                        accentArgb = color.toArgb()
                         preferences.edit().putInt("one_ui_accent", accentArgb).apply()
                     }) { shared = "" }
                 }
@@ -115,8 +112,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, changeMotion: (Boolean) -> Unit,
-               oneUiMode: Boolean, changeOneUiMode: (Boolean) -> Unit, accentColor: Color,
-               changeAccent: (Color) -> Unit, consumed: () -> Unit) {
+               accentColor: Color, changeAccent: (Color) -> Unit, consumed: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { Repository.get(context) }
     val products by repo.products.collectAsStateWithLifecycle()
@@ -141,8 +137,6 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(WatchSort.RECENT) }
     var status by rememberSaveable { mutableStateOf(WatchStatus.ALL) }
-    var oneUiUnlocked by rememberSaveable { mutableStateOf(oneUiMode) }
-    var versionTaps by rememberSaveable { mutableIntStateOf(0) }
     val visible by produceState<List<Product>>(emptyList(), products, query, filter, sort, status) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(products, query, filter, sort, status) }
     }
@@ -299,8 +293,16 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
                 }
                 else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if (oneUiMode) {
                         item { OneUiSettingsHeader() }
+                        item { OneUiSettingsGroup("Quick actions") {
+                            OneUiSettingsRow(Icons.Default.Refresh, "Check all prices now", if (busy) "Price check in progress" else "Refresh every active product", { refresh(null) }, enabled = !busy && !loading)
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.NotificationsActive, "Test notification", "Preview a PriceRadar alert", {
+                                notificationsEnabled = Alerts.enabled(context)
+                                if (notificationsEnabled) { Alerts.show(context, "test", "PriceRadar", "Your price radar is ready"); notice = "Test notification sent" }
+                                else { notice = "Notifications are disabled in Android settings"; openNotificationSettings() }
+                            })
+                        } }
                         item { OneUiSettingsGroup("Price monitoring") {
                             OneUiSettingsRow(Icons.Default.Schedule, "Automatic refresh", "Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", { showRefreshSchedule = true })
                             OneUiDivider()
@@ -309,19 +311,11 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                     permission.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 else openNotificationSettings()
                             })
-                            OneUiDivider()
-                            OneUiSettingsRow(Icons.Default.NotificationsActive, "Test notification", "Preview a PriceRadar alert", {
-                                notificationsEnabled = Alerts.enabled(context)
-                                if (notificationsEnabled) { Alerts.show(context, "test", "PriceRadar", "Your price radar is ready"); notice = "Test notification sent" }
-                                else { notice = "Notifications are disabled in Android settings"; openNotificationSettings() }
-                            })
                         } }
                         item { OneUiSettingsGroup("Display") {
-                            OneUiSettingsRow(Icons.Default.PhoneAndroid, "One UI mode", "Samsung-style settings, cards and navigation", { changeOneUiMode(!oneUiMode) }, trailing = { Switch(oneUiMode, { changeOneUiMode(it) }) })
-                            OneUiDivider()
                             OneUiAccentPicker(accentColor, changeAccent)
                             OneUiDivider()
-                            OneUiSettingsRow(Icons.Default.Animation, "Reduce motion", "Use simpler transitions and effects", { changeMotion(!reducedMotion) }, trailing = { Switch(reducedMotion, { changeMotion(it) }) })
+                            OneUiSettingsRow(Icons.Default.Animation, "Reduce motion", "Use simpler transitions and effects", { changeMotion(!reducedMotion) }, trailing = { OneUiSwitch(reducedMotion, changeMotion) })
                         } }
                         item { OneUiSettingsGroup("Data") {
                             OneUiSettingsRow(Icons.Default.Download, "Export price history", "Save all observations as a CSV file", { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
@@ -335,60 +329,6 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         } }
                         item { Text("Background checks may be delayed by Android battery controls. Pull down on the watchlist for an immediate check.", Modifier.padding(horizontal = 14.dp, vertical = 4.dp), fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF999999)) }
                         item { Spacer(Modifier.height(18.dp)) }
-                    } else {
-                    item { PageHeading("Settings", "Your radar. Your rhythm.") }
-                    item { SettingsGroup("Price monitoring") {
-                        PreferenceRow(Icons.Default.Schedule, "Automatic refresh", "Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", { showRefreshSchedule = true })
-                        GroupDivider()
-                        PreferenceRow(Icons.Default.Notifications, "Notifications", if (notificationsEnabled) "Enabled · price alerts are on" else "Disabled · tap to enable", {
-                            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            else openNotificationSettings()
-                        })
-                        GroupDivider()
-                        PreferenceRow(Icons.Default.NotificationsActive, "Send test notification", "Check how an alert looks", {
-                            notificationsEnabled = Alerts.enabled(context)
-                            if (notificationsEnabled) { Alerts.show(context, "test", "PriceRadar", "Your price radar is ready"); notice = "Test notification sent" }
-                            else { notice = "Notifications are disabled in Android settings"; openNotificationSettings() }
-                        })
-                    } }
-                    item { Text("Android may delay background checks to save battery. Pull down on your watchlist to check now.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    item { SettingsGroup("Comfort & data") {
-                        Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconTile(Icons.Default.Animation)
-                            Column(Modifier.weight(1f)) { Text("Reduce motion", style = MaterialTheme.typography.titleMedium); Text("Fewer effects, lighter navigation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Switch(reducedMotion, changeMotion)
-                        }
-                        GroupDivider()
-                        PreferenceRow(Icons.Default.Download, "Export price history", "Save observations as a CSV file", { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
-                    } }
-                    if (oneUiUnlocked) item { SettingsGroup("Secret lab") {
-                        Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconTile(Icons.Default.PhoneAndroid)
-                            Column(Modifier.weight(1f)) {
-                                Text("One UI 9 mode", style = MaterialTheme.typography.titleMedium)
-                                Text("Samsung-inspired spacing, surfaces and navigation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(oneUiMode, changeOneUiMode)
-                        }
-                    } }
-                    item { HelpDisclosure("Stores & price accuracy", "eMAG, Vexio and Altex use public HTML extraction. Dynamic pages, anti-bot protections, sellers and coupons can prevent accurate results. Failed checks never create price points.") }
-                    item { HelpDisclosure("Your privacy", "Your watchlist and history stay on this device. Uninstalling clears them. Product URLs go directly to retailers. CSV exports contain product links, UTC timestamps, observed prices and targets.") }
-                    item { HelpDisclosure("Understanding discounts", "The discount check compares the advertised reference price with the lowest price observed in the previous 30 days. At least 7 observed days are needed. It is a limited-data signal, not a legal determination.") }
-                    item { Surface(onClick = {
-                        if (!oneUiUnlocked) {
-                            versionTaps++
-                            if (versionTaps >= 7) { oneUiUnlocked = true; notice = "One UI 9 mode unlocked" }
-                            else if (versionTaps >= 4) notice = "${7 - versionTaps} taps until the secret lab"
-                        }
-                    }, color = androidx.compose.ui.graphics.Color.Transparent) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary)
-                            Text("PriceRadar", style = MaterialTheme.typography.titleMedium)
-                            Text("Version ${BuildConfig.VERSION_NAME}${if (oneUiMode) " · One UI mode" else ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    } }
-                    }
                 }
             } }
         }
@@ -529,7 +469,7 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
             }
         } }
 
-        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold); Text("Pause keeps your history and skips checks and alerts", style = MaterialTheme.typography.bodySmall) }; Switch(!p.paused, { pause(!it) }) } }
+        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold); Text("Pause keeps your history and skips checks and alerts", style = MaterialTheme.typography.bodySmall) }; OneUiSwitch(!p.paused, { pause(!it) }) } }
         p.price?.let { price -> p.target?.let { target -> item { InfoCard("Target progress", if (price <= target) "Your target is met · ${money(target - price)} below target" else "${money(price - target)} to go · target ${money(target)}") } } }
         p.error?.let { item { InfoCard("Last check failed", "$it\nLast successful price is preserved.") } }
         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Period.entries.forEach { option -> FilterChip(selected = period == option, onClick = { period = option }, label = { Text(option.label) }) } } }
@@ -544,10 +484,10 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
         item { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Your alerts", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             OutlinedTextField(targetText, onValueChange = { targetText = it; saved = false }, label = { Text("Target price in RON (optional)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = targetText.isNotBlank() && parseMoney(targetText) == null)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Price-drop notifications", Modifier.weight(1f)); Switch(drops, { drops = it; saved = false }) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Price-drop notifications", Modifier.weight(1f)); OneUiSwitch(drops, { drops = it; saved = false }) }
             Text(if (minimum.toInt() == 0) "Alert for any drop" else "Minimum drop: ${minimum.toInt()}% since the previous check")
             Slider(value = minimum, onValueChange = { minimum = it; saved = false }, valueRange = 0f..50f, steps = 49, enabled = drops)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Notify when target is reached", Modifier.weight(1f)); Switch(targets, { targets = it; saved = false }) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Notify when target is reached", Modifier.weight(1f)); OneUiSwitch(targets, { targets = it; saved = false }) }
             Button(onClick = { save(targetText.takeIf { it.isNotBlank() }?.let(::parseMoney), drops, targets, minimum.toInt()); saved = true }, enabled = targetText.isBlank() || parseMoney(targetText) != null, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Alerts saved" else "Save alerts") }
         } }
         item { InfoCard("Coupon detection", if (p.coupons.isEmpty()) "No public coupon text found. Some offers appear only in the retailer app, account or checkout." else p.coupons.joinToString("\n\n")) }
