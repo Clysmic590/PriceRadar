@@ -25,6 +25,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -69,7 +72,6 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 
-private data class RadarScreen(val productId: String?, val tab: Int)
 private val WatchlistTaglines = listOf(
     "Every product. Every drop. One radar.",
     "Good prices rarely announce themselves.",
@@ -162,6 +164,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     val watchScroll = rememberLazyListState()
     val couponScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
+    val pagerState = rememberPagerState(initialPage = tab, pageCount = { 3 })
+    LaunchedEffect(pagerState.settledPage) { tab = pagerState.settledPage }
     var notice by remember { mutableStateOf<String?>(null) }
     var removedProduct by remember { mutableStateOf<Product?>(null) }
     val accessibility = LocalAccessibilityManager.current
@@ -226,14 +230,16 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 navigationIcon = { if (product != null) IconButton(onClick = { selected = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = { IconButton(onClick = { refresh() }, enabled = !busy && !loading) { RefreshIcon(busy) } })
         },
-        bottomBar = { if (product == null) RadarBottomBar(tab) { next ->
-            if (tab == next) scope.launch {
+        bottomBar = { if (product == null) RadarBottomBar(pagerState) { next ->
+            if (pagerState.settledPage == next) scope.launch {
                 when (next) {
                     0 -> watchScroll.animateScrollToItem(0)
                     1 -> couponScroll.animateScrollToItem(0)
                     else -> settingsScroll.animateScrollToItem(0)
                 }
-            } else tab = next
+            } else scope.launch {
+                if (reducedMotion) pagerState.scrollToPage(next) else pagerState.animateScrollToPage(next)
+            }
         } },
         snackbarHost = {
             notice?.let { message -> Snackbar(
@@ -258,28 +264,24 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
             Box(Modifier.fillMaxWidth().height(4.dp)) {
                 if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            // Animate a single screen layer: avoid composing and measuring two lists at once.
-            val screen = RadarScreen(selected, tab)
-            val screenAlpha = remember { Animatable(1f) }
-            LaunchedEffect(screen, reducedMotion) {
-                if (reducedMotion) screenAlpha.snapTo(1f)
-                else { screenAlpha.snapTo(0.65f); screenAlpha.animateTo(1f, tween(180, easing = FastOutSlowInEasing)) }
-            }
-            Box(Modifier.weight(1f).fillMaxWidth().graphicsLayer { alpha = screenAlpha.value }) {
-                val displayProduct = products.find { it.id == screen.productId }
-                if (displayProduct != null) {
-                    ProductDetail(displayProduct,
-                        save = { target, drops, targets, minimum -> scope.launch { repo.settings(displayProduct.id, target, drops, targets, minimum) } },
-                        pause = { value -> scope.launch { repo.pause(displayProduct.id, value) } },
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (product != null) {
+                    ProductDetail(product,
+                        save = { target, drops, targets, minimum -> scope.launch { repo.settings(product.id, target, drops, targets, minimum) } },
+                        pause = { value -> scope.launch { repo.pause(product.id, value) } },
                         remove = {
-                            removedProduct = displayProduct
+                            removedProduct = product
                             scope.launch {
-                                repo.remove(displayProduct.id)
+                                repo.remove(product.id)
                                 selected = null
-                                notice = "Stopped tracking ${displayProduct.name}"
+                                notice = "Stopped tracking ${product.name}"
                             }
                         })
-                } else when (screen.tab) {
+                } else HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1
+                ) { page -> when (page) {
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { PageHeading("Your watchlist", watchlistTagline) }
@@ -357,7 +359,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             Icon(Icons.Default.LocalOffer, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                             Text("No coupons found yet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text("Run a fresh check or add another product and detected offers will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Button(onClick = { tab = 0; discoveryQuery = ""; discoveryStore = null; discovering = true }) { Text("Find a product") }
+                            Button(onClick = { scope.launch { pagerState.animateScrollToPage(0) }; discoveryQuery = ""; discoveryStore = null; discovering = true }) { Text("Find a product") }
                         }
                     }
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
@@ -422,8 +424,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         } }
                         item { Text("Background checks may be delayed by Android battery controls. Pull down on the watchlist for an immediate check.", Modifier.padding(horizontal = 14.dp, vertical = 4.dp), fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF999999)) }
                         item { Spacer(Modifier.height(18.dp)) }
-                }
-            } }
+                } }
+            }
         }
     }
     if (showFilters) ModalBottomSheet(onDismissRequest = { showFilters = false }) {
@@ -512,10 +514,10 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
 }
 
 @Composable
-private fun RadarBottomBar(selectedTab: Int, onSelect: (Int) -> Unit) {
+private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
     val reducedMotion = LocalReducedMotion.current
-    var draggedOffset by remember { mutableFloatStateOf(Float.NaN) }
-    val dragging = !draggedOffset.isNaN()
+    val scope = rememberCoroutineScope()
+    val dragging = pagerState.isScrollInProgress
     Surface(
         modifier = Modifier.navigationBarsPadding().padding(horizontal = 30.dp, vertical = 6.dp),
         shape = RoundedCornerShape(25.dp),
@@ -525,36 +527,43 @@ private fun RadarBottomBar(selectedTab: Int, onSelect: (Int) -> Unit) {
             Modifier.fillMaxWidth().height(66.dp).padding(5.dp)
         ) {
             val segmentWidthPx = constraints.maxWidth / 3f
-            val maxOffsetPx = segmentWidthPx * 2f
-            val targetOffset = if (dragging) draggedOffset else selectedTab * segmentWidthPx
-            val animatedOffset by animateFloatAsState(
-                targetValue = targetOffset,
-                animationSpec = if (reducedMotion) snap() else spring(dampingRatio = .78f, stiffness = 520f),
-                label = "bottom navigation pill"
-            )
-            val highlighted = if (dragging) (draggedOffset / segmentWidthPx).roundToInt().coerceIn(0, 2) else selectedTab
+            val pagePosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 2f)
+            val pillOffset = pagePosition * segmentWidthPx
+            val highlighted = pagePosition.roundToInt().coerceIn(0, 2)
             Surface(
                 modifier = Modifier
-                    .offset { IntOffset(animatedOffset.roundToInt(), 0) }
+                    .offset { IntOffset(pillOffset.roundToInt(), 0) }
                     .width(maxWidth / 3)
                     .fillMaxHeight()
-                    .graphicsLayer { scaleX = if (dragging) 1.06f else 1f; scaleY = if (dragging) .94f else 1f },
+                    .graphicsLayer {
+                        if (!reducedMotion) {
+                            scaleX = if (dragging) 1.06f else 1f
+                            scaleY = if (dragging) .94f else 1f
+                        }
+                    },
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {}
             Row(
-                Modifier.fillMaxSize().pointerInput(segmentWidthPx, selectedTab) {
+                Modifier.fillMaxSize().pointerInput(pagerState, segmentWidthPx) {
                     detectHorizontalDragGestures(
-                        onDragStart = { draggedOffset = selectedTab * segmentWidthPx },
-                        onDragCancel = { draggedOffset = Float.NaN },
+                        onDragStart = {},
+                        onDragCancel = {
+                            scope.launch {
+                                val destination = (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceIn(0, 2)
+                                if (reducedMotion) pagerState.scrollToPage(destination) else pagerState.animateScrollToPage(destination)
+                            }
+                        },
                         onDragEnd = {
-                            val destination = (draggedOffset / segmentWidthPx).roundToInt().coerceIn(0, 2)
-                            draggedOffset = Float.NaN
-                            onSelect(destination)
+                            scope.launch {
+                                val destination = (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceIn(0, 2)
+                                if (reducedMotion) pagerState.scrollToPage(destination) else pagerState.animateScrollToPage(destination)
+                            }
                         }
                     ) { change, amount ->
                         change.consume()
-                        draggedOffset = (draggedOffset + amount).coerceIn(0f, maxOffsetPx)
+                        // Keep the page and pill under the same finger throughout the gesture.
+                        pagerState.dispatchRawDelta(-amount)
                     }
                 }
             ) {
@@ -910,5 +919,6 @@ private fun ProductQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVe
         }
     }
 }
+
 
 
