@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalAccessibilityManager
@@ -88,15 +89,19 @@ class MainActivity : ComponentActivity() {
             }
             val preferences = remember { getSharedPreferences("performance", MODE_PRIVATE) }
             var reducedMotion by remember { mutableStateOf(preferences.getBoolean("reduced_motion", getSystemService(ActivityManager::class.java).isLowRamDevice)) }
-            var oneUiMode by remember { mutableStateOf(preferences.getBoolean("one_ui_9_mode", false)) }
+            var oneUiMode by remember { mutableStateOf(preferences.getBoolean("one_ui_9_mode", true)) }
+            var accentArgb by remember { mutableIntStateOf(preferences.getInt("one_ui_accent", 0xFF4C8DFF.toInt())) }
             CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
-                RadarTheme(oneUiMode) {
+                RadarTheme(oneUiMode, Color(accentArgb)) {
                     PriceRadar(shared, openedProduct, { openedProduct = null }, { value ->
                         reducedMotion = value
                         preferences.edit().putBoolean("reduced_motion", value).apply()
                     }, oneUiMode, { value ->
                         oneUiMode = value
                         preferences.edit().putBoolean("one_ui_9_mode", value).apply()
+                    }, Color(accentArgb), { color ->
+                        accentArgb = color.value.toLong().toInt()
+                        preferences.edit().putInt("one_ui_accent", accentArgb).apply()
                     }) { shared = "" }
                 }
             }
@@ -109,7 +114,8 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, changeMotion: (Boolean) -> Unit,
-               oneUiMode: Boolean, changeOneUiMode: (Boolean) -> Unit, consumed: () -> Unit) {
+               oneUiMode: Boolean, changeOneUiMode: (Boolean) -> Unit, accentColor: Color,
+               changeAccent: (Color) -> Unit, consumed: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { Repository.get(context) }
     val products by repo.products.collectAsStateWithLifecycle()
@@ -291,7 +297,44 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     if (found.isEmpty()) item { Text("No coupon text detected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
                 }
-                else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (oneUiMode) {
+                        item { OneUiSettingsHeader() }
+                        item { OneUiSettingsGroup("Price monitoring") {
+                            OneUiSettingsRow(Icons.Default.Schedule, "Automatic refresh", "Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", { showRefreshSchedule = true })
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.Notifications, "Notifications", if (notificationsEnabled) "On · price alerts are allowed" else "Off · tap to enable", {
+                                if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                else openNotificationSettings()
+                            })
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.NotificationsActive, "Test notification", "Preview a PriceRadar alert", {
+                                notificationsEnabled = Alerts.enabled(context)
+                                if (notificationsEnabled) { Alerts.show(context, "test", "PriceRadar", "Your price radar is ready"); notice = "Test notification sent" }
+                                else { notice = "Notifications are disabled in Android settings"; openNotificationSettings() }
+                            })
+                        } }
+                        item { OneUiSettingsGroup("Display") {
+                            OneUiSettingsRow(Icons.Default.PhoneAndroid, "One UI mode", "Samsung-style settings, cards and navigation", { changeOneUiMode(!oneUiMode) }, trailing = { Switch(oneUiMode, { changeOneUiMode(it) }) })
+                            OneUiDivider()
+                            OneUiAccentPicker(accentColor, changeAccent)
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.Animation, "Reduce motion", "Use simpler transitions and effects", { changeMotion(!reducedMotion) }, trailing = { Switch(reducedMotion, { changeMotion(it) }) })
+                        } }
+                        item { OneUiSettingsGroup("Data") {
+                            OneUiSettingsRow(Icons.Default.Download, "Export price history", "Save all observations as a CSV file", { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.Security, "Privacy", "Watchlist and history stay on this device", { notice = "PriceRadar stores your watchlist locally" })
+                        } }
+                        item { OneUiSettingsGroup("About PriceRadar") {
+                            OneUiSettingsRow(Icons.Default.Info, "PriceRadar", "Version ${BuildConfig.VERSION_NAME}", { notice = "PriceRadar ${BuildConfig.VERSION_NAME}" })
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.Storefront, "Retailer support", "eMAG, Vexio and Altex · experimental", { notice = "Retailer integrations still require live device testing" })
+                        } }
+                        item { Text("Background checks may be delayed by Android battery controls. Pull down on the watchlist for an immediate check.", Modifier.padding(horizontal = 14.dp, vertical = 4.dp), fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF999999)) }
+                        item { Spacer(Modifier.height(18.dp)) }
+                    } else {
                     item { PageHeading("Settings", "Your radar. Your rhythm.") }
                     item { SettingsGroup("Price monitoring") {
                         PreferenceRow(Icons.Default.Schedule, "Automatic refresh", "Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", { showRefreshSchedule = true })
@@ -341,10 +384,10 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary)
                             Text("PriceRadar", style = MaterialTheme.typography.titleMedium)
-                            Text("Version ${BuildConfig.VERSION_NAME} · ${if (oneUiMode) "One UI 9" else "design preview"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Version ${BuildConfig.VERSION_NAME}${if (oneUiMode) " · One UI mode" else ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } }
-
+                    }
                 }
             } }
         }
