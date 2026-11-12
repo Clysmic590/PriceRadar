@@ -25,6 +25,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -558,7 +559,15 @@ private fun RadarBottomBar(selectedTab: Int, onSelect: (Int) -> Unit) {
                 }
             ) {
                 listOf("Watchlist", "Coupons", "Settings").forEachIndexed { index, title ->
-                    Surface(onClick = { onSelect(index) }, modifier = Modifier.weight(1f).fillMaxHeight(), color = Color.Transparent) {
+                    val interaction = remember(index) { MutableInteractionSource() }
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight().clickable(
+                            interactionSource = interaction,
+                            indication = null,
+                            onClick = { onSelect(index) }
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Icon(
                                 when(index) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings },

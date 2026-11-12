@@ -1,17 +1,14 @@
-## Draggable navigation and icon polish
+## Bottom navigation gesture fix
 
-PriceRadar 1.7.3 improves the launcher icon and bottom navigation.
+PriceRadar 1.7.4 fixes the incorrect grey block that could appear while dragging the bottom navigation.
 
 ### What changed
 
-- Rebuilt the adaptive icon with a full blue background and clean white radar.
-- Made the bottom navigation smaller.
-- Added a spring-animated selection pill.
-- The selection pill can be dragged between Watchlist, Coupons and Settings.
-- How offers work appears expanded only while no coupons are available.
-- How offers work disappears automatically once a coupon is detected.
+- Removed competing pressed-state overlays from individual tabs.
+- The animated selection pill is now the only highlighted navigation layer.
+- Tap and drag navigation remain available.
 
-Download **PriceRadar-1.7.3.apk** below.
+Download **PriceRadar-1.7.4.apk** below.
 
 The APK checksum is included in **SHA256SUMS.txt**.
 
