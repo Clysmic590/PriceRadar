@@ -1,0 +1,23 @@
+name: Publish PriceRadar 1.5.3 tag
+on:
+  push:
+    branches: [redesign-1.5]
+permissions:
+  contents: write
+jobs:
+  create-release-tag:
+    if: contains(github.event.head_commit.message, '[release-v1.5.3]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Verify and publish v1.5.3 tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "1.5.3"' app/build.gradle.kts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a v1.5.3 -m "PriceRadar 1.5.3"
+          git push origin v1.5.3
