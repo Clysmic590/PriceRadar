@@ -145,6 +145,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     var status by rememberSaveable { mutableStateOf(WatchStatus.ALL) }
     val displayPreferences = remember { context.getSharedPreferences("performance", android.content.Context.MODE_PRIVATE) }
     var compactCards by remember { mutableStateOf(displayPreferences.getBoolean("compact_watchlist", false)) }
+    var showAbout by rememberSaveable { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
     val visible by produceState<List<Product>>(emptyList(), products, query, filter, sort, status) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(products, query, filter, sort, status) }
     }
@@ -324,7 +326,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                     onClick = { compactCards = false; displayPreferences.edit().putBoolean("compact_watchlist", false).apply() },
                                     shape = SegmentedButtonDefaults.itemShape(0, 2),
                                     icon = { Icon(Icons.Default.ViewAgenda, null, Modifier.size(18.dp)) },
-                                    label = { Text("Comfortable") }
+                                    label = { Text("Normal") }
                                 )
                                 SegmentedButton(
                                     selected = compactCards,
@@ -360,7 +362,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 }
                 1 -> LazyColumn(state = couponScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { PageHeading("Offers for you", "Coupons from the products you follow.") }
-                    item { HelpDisclosure("How offers work", "Coupon text found on tracked product pages appears here. Check availability and eligibility with the retailer at checkout.") }
+                    item { HelpDisclosure("How offers work", "Coupon text found on tracked product pages appears here. Check availability and eligibility with the retailer at checkout.", initiallyExpanded = true) }
                     val found = couponProducts
                     if (found.isEmpty()) item {
                         Column(Modifier.fillMaxWidth().padding(vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -426,7 +428,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             OneUiSettingsRow(Icons.Default.Security, "Privacy", "Watchlist and history stay on this device", { notice = "PriceRadar stores your watchlist locally" })
                         } }
                         item { OneUiSettingsGroup("About PriceRadar") {
-                            OneUiSettingsRow(Icons.Default.Info, "PriceRadar", "Version ${BuildConfig.VERSION_NAME}", { notice = "PriceRadar ${BuildConfig.VERSION_NAME}" })
+                            OneUiSettingsRow(Icons.Default.Info, "PriceRadar", "Version ${BuildConfig.VERSION_NAME} · Created by Clysmic590", { showAbout = true })
                             OneUiDivider()
                             OneUiSettingsRow(Icons.Default.Storefront, "Retailer support", "eMAG, Vexio and Altex · experimental", { notice = "Retailer integrations still require live device testing" })
                         } }
@@ -482,6 +484,18 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
             }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { showRefreshSchedule = false }) { Text("Cancel") } })
     }
+    if (showAbout) AlertDialog(
+        onDismissRequest = { showAbout = false },
+        icon = { Icon(Icons.Default.Radar, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("PriceRadar") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Created by Clysmic590", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Version ${BuildConfig.VERSION_NAME}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("A private, on-device price tracker for eMAG, Vexio and Altex.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { uriHandler.openUri("https://github.com/Clysmic590/PriceRadar") }) { Icon(Icons.Default.Code, null); Spacer(Modifier.width(8.dp)); Text("View on GitHub") }
+        } },
+        confirmButton = { TextButton(onClick = { showAbout = false }) { Text("Done") } }
+    )
     if (discovering) ProductSearchDialog(initialQuery = discoveryQuery, initialStore = discoveryStore,
         onClose = { discovering = false }, onPasteLink = { discovering = false; adding = true }, onTrack = { link ->
             discovering = false
@@ -553,9 +567,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
             } }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            Text("COMPARE STORES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("COMPARE WITH ANOTHER STORE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Retailer.entries.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
+                Retailer.entries.filter { it != p.retailer }.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -644,6 +658,7 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
     var copied by remember { mutableStateOf(false) }
     var currency by rememberSaveable(p.id) { mutableStateOf("RON") }
     var currencyExpanded by rememberSaveable(p.id) { mutableStateOf(false) }
+    var trackingEnabled by rememberSaveable(p.id) { mutableStateOf(!p.paused) }
     val uri = LocalUriHandler.current
     val context = LocalContext.current
     val exchange by produceState<ExchangeRates?>(null, context) { value = CurrencyRates.load(context) }
@@ -652,6 +667,7 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
     val highPrice = remember(points) { points.maxOfOrNull { it.price } }
     val assessment = remember(p.history, p.reference) { discountAssessment(p) }
     LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
+    LaunchedEffect(p.paused) { trackingEnabled = !p.paused }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { StoreBadge(p.retailer) }
         item { Text(p.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
@@ -700,15 +716,18 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
             }
         } } }
         p.error?.let { item { InfoCard("Last check failed", "$it\nLast successful price is preserved.") } }
-        item { Card(Modifier.fillMaxWidth()) {
+        item { Card(onClick = {
+            trackingEnabled = !trackingEnabled
+            pause(!trackingEnabled)
+        }, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (p.paused) Icons.Default.PauseCircle else Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
+                Icon(if (!trackingEnabled) Icons.Default.PauseCircle else Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold)
-                    Text("Pause keeps history and skips checks and alerts", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                    Text(if (!trackingEnabled) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold)
+                    Text(if (trackingEnabled) "Checks and alerts are enabled" else "History kept · checks and alerts paused", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                OneUiSwitch(!p.paused, { pause(!it) })
+                OneUiSwitch(trackingEnabled, { enabled -> trackingEnabled = enabled; pause(!enabled) })
             }
         } }
         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Period.entries.forEach { option -> FilterChip(selected = period == option, onClick = { period = option }, label = { Text(option.label) }) } } }

@@ -237,8 +237,8 @@ fun OneUiAccentPicker(selected: Color, onSelected: (Color) -> Unit) {
 }
 
 @Composable
-fun HelpDisclosure(title: String, body: String) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+fun HelpDisclosure(title: String, body: String, initiallyExpanded: Boolean = false) {
+    var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
     Surface(onClick = { expanded = !expanded }, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -261,4 +261,5 @@ fun StoreBadge(store: Retailer) {
         Text(store.label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
+
 
