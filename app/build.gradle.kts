@@ -14,7 +14,7 @@ android {
             keyPassword = "android"
         }
     }
-    defaultConfig { applicationId = "ro.priceradar"; minSdk = 26; targetSdk = 37; versionCode = 12; versionName = "1.5.3" }
+    defaultConfig { applicationId = "ro.priceradar"; minSdk = 26; targetSdk = 37; versionCode = 13; versionName = "1.5.4" }
     buildFeatures { compose = true; buildConfig = true }
     buildTypes {
         getByName("release") {
