@@ -1,0 +1,17 @@
+name: Update PriceRadar 1.5.9 notes
+on:
+  push:
+    branches: [redesign-1.5]
+permissions:
+  contents: write
+jobs:
+  update-notes:
+    if: contains(github.event.head_commit.message, '[update-v1.5.9-notes]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Simplify release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit v1.5.9 --notes-file .github/release-notes.md
+
