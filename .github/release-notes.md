@@ -1,16 +1,18 @@
-## One UI settings fix
+## One UI settings bug fixes and QoL
 
-PriceRadar 1.5.3 replaces the ineffective preview toggle with a substantially rebuilt Samsung-style settings experience.
+PriceRadar 1.5.4 fixes the first One UI settings release and makes the Samsung-style interface permanent.
 
 ### What changed
 
-- One UI mode is enabled by default on fresh installs.
-- Settings now use a large Samsung-style title, grouped dark cards, compact dividers, rounded icon tiles, One UI-like spacing, switches and hierarchy.
-- A seven-colour accent picker changes icons, switches and selected controls.
-- The version is correctly shown as 1.5.3 without the old “design preview” suffix.
+- One UI is now always enabled; the secret unlock and mode toggle are removed.
+- The seven-colour palette now applies immediately and persists correctly using ARGB values.
+- Enabled switches now use a visible accent-coloured track with a white thumb; disabled switches use Samsung-style dark tracks.
+- All product and alert switches share the corrected appearance.
+- Settings adds quick actions for checking all active products and testing notifications.
+- The version is correctly shown as 1.5.4.
 - Existing watchlist, alerts, price history and retailer features remain available.
 
-Download **PriceRadar-1.5.3.apk** below. The signing key is unchanged, so it can be installed over the previous build. Android version code: 12. Android 8+ is supported.
+Download **PriceRadar-1.5.4.apk** below. The signing key is unchanged, so it can be installed over the previous build. Android version code: 13. Android 8+ is supported.
 
 Validation: unit tests, release lint, optimized APK build, and Android 12 startup smoke test. The APK checksum is provided in **SHA256SUMS.txt**. This is a development-signed sideload build, not a Play Store release.
 
