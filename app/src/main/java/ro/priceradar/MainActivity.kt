@@ -291,8 +291,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { PageHeading("Your watchlist", watchlistTagline) }
-                    item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     item { WatchOverview(products.size, activeCount, reachedCount) }
+                    item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     if (products.isNotEmpty()) item {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(selected = status == WatchStatus.ACTIVE, onClick = { status = WatchStatus.ACTIVE }, label = { Text("Active $activeCount") }, leadingIcon = { Icon(Icons.Default.Visibility, null, Modifier.size(18.dp)) })
