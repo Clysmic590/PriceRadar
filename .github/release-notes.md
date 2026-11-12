@@ -1,20 +1,17 @@
-## One UI fixes and polish
+## Draggable navigation and icon polish
 
-PriceRadar 1.7.2 fixes tracking controls and improves search, alerts and phone behaviour.
+PriceRadar 1.7.3 improves the launcher icon and bottom navigation.
 
 ### What changed
 
-- Fixed the Tracking active switch and its crowded layout.
-- Removed same-retailer choices from Compare with another store.
-- Restyled store search and browser controls for One UI.
-- Improved notification icon, expanded content and View product action.
-- Added a new adaptive PriceRadar launcher icon.
-- Locked the phone interface to portrait orientation.
-- Added Created by Clysmic590 to the About page.
-- How offers work now opens automatically.
-- Renamed Comfortable card density to Normal.
+- Rebuilt the adaptive icon with a full blue background and clean white radar.
+- Made the bottom navigation smaller.
+- Added a spring-animated selection pill.
+- The selection pill can be dragged between Watchlist, Coupons and Settings.
+- How offers work appears expanded only while no coupons are available.
+- How offers work disappears automatically once a coupon is detected.
 
-Download **PriceRadar-1.7.2.apk** below.
+Download **PriceRadar-1.7.3.apk** below.
 
 The APK checksum is included in **SHA256SUMS.txt**.
 

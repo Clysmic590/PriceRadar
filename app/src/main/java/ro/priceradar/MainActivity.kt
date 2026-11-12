@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +42,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
@@ -62,6 +65,7 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 
 private data class RadarScreen(val productId: String?, val tab: Int)
@@ -221,31 +225,14 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 navigationIcon = { if (product != null) IconButton(onClick = { selected = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = { IconButton(onClick = { refresh() }, enabled = !busy && !loading) { RefreshIcon(busy) } })
         },
-        bottomBar = { if (product == null) Surface(
-            modifier = Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp),
-            shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh
-        ) {
-            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("Watchlist", "Coupons", "Settings").forEachIndexed { i, title ->
-                    Surface(onClick = {
-                        if (tab == i) scope.launch {
-                            when (i) {
-                                0 -> watchScroll.animateScrollToItem(0)
-                                1 -> couponScroll.animateScrollToItem(0)
-                                else -> settingsScroll.animateScrollToItem(0)
-                            }
-                        } else tab = i
-                    }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp),
-                        color = if (tab == i) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent) {
-                        Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(when(i) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings }, null,
-                                tint = if (tab == i) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(title, style = MaterialTheme.typography.labelMedium,
-                                color = if (tab == i) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+        bottomBar = { if (product == null) RadarBottomBar(tab) { next ->
+            if (tab == next) scope.launch {
+                when (next) {
+                    0 -> watchScroll.animateScrollToItem(0)
+                    1 -> couponScroll.animateScrollToItem(0)
+                    else -> settingsScroll.animateScrollToItem(0)
                 }
-            }
+            } else tab = next
         } },
         snackbarHost = {
             notice?.let { message -> Snackbar(
@@ -361,9 +348,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 }
                 }
                 1 -> LazyColumn(state = couponScroll, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { PageHeading("Offers for you", "Coupons from the products you follow.") }
-                    item { HelpDisclosure("How offers work", "Coupon text found on tracked product pages appears here. Check availability and eligibility with the retailer at checkout.", initiallyExpanded = true) }
                     val found = couponProducts
+                    item { PageHeading("Offers for you", "Coupons from the products you follow.") }
+                    if (found.isEmpty()) item { HelpDisclosure("How offers work", "Coupon text found on tracked product pages appears here. Check availability and eligibility with the retailer at checkout.", initiallyExpanded = true) }
                     if (found.isEmpty()) item {
                         Column(Modifier.fillMaxWidth().padding(vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Icon(Icons.Default.LocalOffer, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
@@ -521,6 +508,71 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
             }) { Icon(Icons.Default.ContentPaste, "Paste link") } })
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     } }, confirmButton = { TextButton(onClick = { scope.launch { try { val id = repo.add(url); adding = false; url = ""; selected = id; refresh(id) } catch (e: Exception) { error = e.message } } }) { Text("Start tracking") } }, dismissButton = { TextButton(onClick = { adding = false; error = null }) { Text("Cancel") } })
+}
+
+@Composable
+private fun RadarBottomBar(selectedTab: Int, onSelect: (Int) -> Unit) {
+    val reducedMotion = LocalReducedMotion.current
+    var draggedOffset by remember { mutableFloatStateOf(Float.NaN) }
+    val dragging = !draggedOffset.isNaN()
+    Surface(
+        modifier = Modifier.navigationBarsPadding().padding(horizontal = 30.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(25.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().height(66.dp).padding(5.dp)
+        ) {
+            val segmentWidthPx = constraints.maxWidth / 3f
+            val maxOffsetPx = segmentWidthPx * 2f
+            val targetOffset = if (dragging) draggedOffset else selectedTab * segmentWidthPx
+            val animatedOffset by animateFloatAsState(
+                targetValue = targetOffset,
+                animationSpec = if (reducedMotion) snap() else spring(dampingRatio = .78f, stiffness = 520f),
+                label = "bottom navigation pill"
+            )
+            val highlighted = if (dragging) (draggedOffset / segmentWidthPx).roundToInt().coerceIn(0, 2) else selectedTab
+            Surface(
+                modifier = Modifier
+                    .offset { IntOffset(animatedOffset.roundToInt(), 0) }
+                    .width(maxWidth / 3)
+                    .fillMaxHeight()
+                    .graphicsLayer { scaleX = if (dragging) 1.06f else 1f; scaleY = if (dragging) .94f else 1f },
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {}
+            Row(
+                Modifier.fillMaxSize().pointerInput(segmentWidthPx, selectedTab) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { draggedOffset = selectedTab * segmentWidthPx },
+                        onDragCancel = { draggedOffset = Float.NaN },
+                        onDragEnd = {
+                            val destination = (draggedOffset / segmentWidthPx).roundToInt().coerceIn(0, 2)
+                            draggedOffset = Float.NaN
+                            onSelect(destination)
+                        }
+                    ) { change, amount ->
+                        change.consume()
+                        draggedOffset = (draggedOffset + amount).coerceIn(0f, maxOffsetPx)
+                    }
+                }
+            ) {
+                listOf("Watchlist", "Coupons", "Settings").forEachIndexed { index, title ->
+                    Surface(onClick = { onSelect(index) }, modifier = Modifier.weight(1f).fillMaxHeight(), color = Color.Transparent) {
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            Icon(
+                                when(index) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings },
+                                null,
+                                Modifier.size(if (highlighted == index) 23.dp else 21.dp),
+                                tint = if (highlighted == index) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(title, style = MaterialTheme.typography.labelSmall, color = if (highlighted == index) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable private fun Stat(value: String, label: String, modifier: Modifier) {
