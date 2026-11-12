@@ -562,8 +562,13 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
                         }
                     ) { change, amount ->
                         change.consume()
-                        // Keep the page and pill under the same finger throughout the gesture.
-                        pagerState.dispatchRawDelta(-amount)
+                        // Pager only accepts raw deltas while it owns an active scroll
+                        // mutation. Drive that mutation explicitly for bottom-bar drags.
+                        scope.launch {
+                            pagerState.scroll {
+                                scrollBy(-amount)
+                            }
+                        }
                     }
                 }
             ) {
