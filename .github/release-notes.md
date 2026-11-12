@@ -1,15 +1,18 @@
-## Bug-fix release
+## One UI settings fix
 
-PriceRadar 1.5.2 fixes the version shown inside the app and packages the latest hidden One UI 9-inspired mode in a correctly versioned release build.
+PriceRadar 1.5.3 replaces the ineffective preview toggle with a substantially rebuilt Samsung-style settings experience.
 
-### Included fixes
+### What changed
 
-- The Settings footer now reports version 1.5.2 from generated build metadata.
-- The hidden One UI 9-inspired interface remains available alongside the standard PriceRadar design.
-- Includes the current watchlist tagline rotation, transitions, loading skeletons, tactile feedback, and polished empty states.
+- One UI mode is enabled by default on fresh installs.
+- Settings now use a large Samsung-style title, grouped dark cards, compact dividers, rounded icon tiles, One UI-like spacing, switches and hierarchy.
+- A seven-colour accent picker changes icons, switches and selected controls.
+- The version is correctly shown as 1.5.3 without the old “design preview” suffix.
+- Existing watchlist, alerts, price history and retailer features remain available.
 
-Download **PriceRadar-1.5.2.apk** below. The signing key is unchanged, so it can be installed over the previous build. Android version code: 11. Android 8+ is supported.
+Download **PriceRadar-1.5.3.apk** below. The signing key is unchanged, so it can be installed over the previous build. Android version code: 12. Android 8+ is supported.
 
 Validation: unit tests, release lint, optimized APK build, and Android 12 startup smoke test. The APK checksum is provided in **SHA256SUMS.txt**. This is a development-signed sideload build, not a Play Store release.
 
-Retailer integrations for eMAG, Vexio, and Altex remain experimental and should be tested on physical devices because retailer markup and anti-bot behavior can change.
+This is a custom Compose interface inspired by Samsung settings, not Samsung firmware or an official One UI/SESL distribution. Retailer integrations for eMAG, Vexio, and Altex remain experimental and require physical-device testing.
+
