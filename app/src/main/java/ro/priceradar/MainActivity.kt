@@ -223,7 +223,15 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         ) {
             Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 listOf("Watchlist", "Coupons", "Settings").forEachIndexed { i, title ->
-                    Surface(onClick = { tab = i }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp),
+                    Surface(onClick = {
+                        if (tab == i) scope.launch {
+                            when (i) {
+                                0 -> watchScroll.animateScrollToItem(0)
+                                1 -> couponScroll.animateScrollToItem(0)
+                                else -> settingsScroll.animateScrollToItem(0)
+                            }
+                        } else tab = i
+                    }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp),
                         color = if (tab == i) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent) {
                         Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(when(i) { 0 -> Icons.Default.Radar; 1 -> Icons.Default.LocalOffer; else -> Icons.Default.Settings }, null,
@@ -283,6 +291,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { PageHeading("Your watchlist", watchlistTagline) }
+                    item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     item { WatchOverview(products.size, activeCount, reachedCount) }
                     if (products.isNotEmpty()) item {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -292,11 +301,15 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             if (status != WatchStatus.ALL) AssistChip(onClick = { status = WatchStatus.ALL }, label = { Text("Show all") }, leadingIcon = { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) })
                         }
                     }
-                    item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     if (products.isNotEmpty()) {
                         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Saved products", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            TextButton(onClick = { showFilters = true }) { Icon(Icons.Default.Tune, null); Spacer(Modifier.width(6.dp)); Text("Filter & sort") }
+                            Column(Modifier.weight(1f)) {
+                                Text("Saved products", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("${visible.size} of ${products.size} shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            FilledTonalButton(onClick = { showFilters = true }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)) {
+                                Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Sort")
+                            }
                         } }
                         item { TextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("Search your watchlist") }, shape = RoundedCornerShape(24.dp), singleLine = true,
@@ -307,7 +320,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         } }
                     }
                     if (products.isEmpty() && !loading) item { RadarWelcome() }
-                    if (products.isNotEmpty()) item { Text("${visible.size} products · ${sort.label} · ${status.label}", style = MaterialTheme.typography.labelMedium) }
+                    if (products.isNotEmpty()) item { Text("${sort.label} · ${status.label}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (products.isNotEmpty() && visible.isEmpty()) item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("No matching products. Try another search or filter.")
@@ -580,10 +593,10 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
                 Text("LATEST OBSERVED PRICE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(p.target?.let { "Your target: ${money(it)}" } ?: "Add a target below to get notified", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                if (p.checked > 0L) Text("Updated ${relativeStamp(p.checked)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .78f))
             }
         } }
 
-        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold); Text("Pause keeps your history and skips checks and alerts", style = MaterialTheme.typography.bodySmall) }; OneUiSwitch(!p.paused, { pause(!it) }) } }
         p.price?.let { price -> p.target?.let { target -> item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -598,6 +611,17 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
             }
         } } }
         p.error?.let { item { InfoCard("Last check failed", "$it\nLast successful price is preserved.") } }
+        item { Card(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (p.paused) Icons.Default.PauseCircle else Icons.Default.Visibility, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold)
+                    Text("Pause keeps history and skips checks and alerts", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OneUiSwitch(!p.paused, { pause(!it) })
+            }
+        } }
         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Period.entries.forEach { option -> FilterChip(selected = period == option, onClick = { period = option }, label = { Text(option.label) }) } } }
         item { Card { Column(Modifier.padding(20.dp)) {
             Text("Price history", style = MaterialTheme.typography.titleMedium)
@@ -627,26 +651,40 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
             Button(onClick = { save(targetText.takeIf { it.isNotBlank() }?.let(::parseMoney), drops, targets, minimum.toInt()); saved = true }, enabled = targetText.isBlank() || parseMoney(targetText) != null, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Alerts saved" else "Save alerts") }
         } }
         item { InfoCard("Coupon detection", if (p.coupons.isEmpty()) "No public coupon text found. Some offers appear only in the retailer app, account or checkout." else p.coupons.joinToString("\n\n")) }
-        item { OutlinedButton(onClick = {
-            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, "${p.name}\n${p.url}")
-            }, "Share product"))
-        }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(8.dp)); Text("Share product") } }
-        item { OutlinedButton(onClick = {
-            context.getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("${p.retailer.label} product", p.url))
-            copied = true
-        }, modifier = Modifier.fillMaxWidth()) {
-            Icon(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, null)
-            Spacer(Modifier.width(8.dp))
-            Text(if (copied) "Link copied" else "Copy product link")
-        } }
-        item { OutlinedButton(onClick = { uri.openUri(p.url) }, modifier = Modifier.fillMaxWidth()) { Text("Open at ${p.retailer.label}") } }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Product actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProductQuickAction(Icons.Default.OpenInNew, "Open", Modifier.weight(1f)) { uri.openUri(p.url) }
+                    ProductQuickAction(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, if (copied) "Copied" else "Copy", Modifier.weight(1f)) {
+                        context.getSystemService(ClipboardManager::class.java)
+                            .setPrimaryClip(ClipData.newPlainText("${p.retailer.label} product", p.url))
+                        copied = true
+                    }
+                    ProductQuickAction(Icons.Default.Share, "Share", Modifier.weight(1f)) {
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "${p.name}\n${p.url}")
+                        }, "Share product"))
+                    }
+                }
+            }
+        }
         item { TextButton(onClick = { deleting = true }) { Text("Stop tracking", color = MaterialTheme.colorScheme.error) } }
     }
     if (deleting) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Stop tracking?") }, text = { Text("This removes the product and its local price history.") }, confirmButton = { TextButton(onClick = remove) { Text("Remove") } }, dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } })
 }
+
+@Composable
+private fun ProductQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.padding(vertical = 16.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Icon(icon, label, tint = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        }
+    }
+}
+
 @Composable private fun PriceChart(points: List<Observation>) {
     val accent = MaterialTheme.colorScheme.primary
     val grid = MaterialTheme.colorScheme.outlineVariant
@@ -703,4 +741,5 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
         }
     }
 }
+
 
