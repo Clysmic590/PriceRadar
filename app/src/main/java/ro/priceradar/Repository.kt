@@ -64,8 +64,16 @@ class Repository private constructor(context: Context) {
     suspend fun pause(id: String, paused: Boolean) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         state.value.find { it.id == id }?.let { save(it.copy(paused = paused)) }
     } }
+    suspend fun pauseAll(paused: Boolean) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+        state.value.toList().forEach { product ->
+            if (product.paused != paused) save(product.copy(paused = paused))
+        }
+    } }
     suspend fun remove(id: String) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         db.writableDatabase.delete("products", "id=?", arrayOf(id)); state.value = state.value.filterNot { it.id == id }
+    } }
+    suspend fun restore(product: Product) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+        if (state.value.none { it.id == product.id }) save(product)
     } }
     suspend fun refresh(context: Context, onlyId: String? = null): Boolean = withContext(Dispatchers.IO) {
         initialization.await()
@@ -110,3 +118,4 @@ class Repository private constructor(context: Context) {
         }
     }
 }
+

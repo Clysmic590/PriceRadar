@@ -1,9 +1,17 @@
-Fixes the immediate startup crash in the optimized 1.3.0 APK.
+## Interactive navigation
 
-R8 had removed the public no-argument constructor Room uses to initialize WorkManager's database. The constructor is now explicitly retained. Release publishing is gated on launching the actual optimized APK on an Android 12 tablet emulator, restarting it and rotating the display.
+PriceRadar 1.7.4 adds fluid, direct navigation between the Watchlist, Coupons and Settings screens.
 
-Download **PriceRadar-1.3.1.apk** below and install it over 1.3.0. The signing key is unchanged; uninstalling is not required. Android version code: 7. Android 8+ is supported.
+### What changed
 
-Includes all 1.3 features: product-name search, eMAG/Vexio/Altex choices, store-browser tracking, smoother transitions, reduced motion and optimized rendering. Native search remains experimental and uses the store-browser fallback when results are unavailable.
+- Swipe horizontally between full screens with the adjacent page visible beneath your finger.
+- Drag the bottom navigation pill to move the screen in sync.
+- Tap a destination for a smooth animated transition.
+- Fixed the incorrect grey pressed block in the bottom navigation.
+- Kept the compact One UI-inspired navigation and existing PriceRadar design.
 
-Validation: unit tests, release lint, optimized APK build and Android 12 release-APK startup checks. APK checksum is in SHA256SUMS.txt. This is a development-signed sideload build, not a Play Store release.
+Download **PriceRadar-1.7.4.apk** below.
+
+The APK checksum is included in **SHA256SUMS.txt**.
+
+> Retailer integrations for eMAG, Vexio and Altex still require live testing against current storefront pages on a physical device.

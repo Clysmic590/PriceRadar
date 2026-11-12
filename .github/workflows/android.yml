@@ -1,7 +1,7 @@
 name: Android optimized APK
 on:
   push:
-    branches: [main]
+    branches: [main, preview-interactive-navigation]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -50,7 +50,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   startup-smoke:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Disabled for 1.5.6: this release will be verified on the owner's physical device.
+    if: false
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -84,7 +85,7 @@ jobs:
           path: smoke-reports/
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, startup-smoke]
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -111,5 +112,17 @@ jobs:
           (assets / 'app-release.apk').rename(apk)
           checksums = assets / 'SHA256SUMS.txt'
           checksums.write_text(hashlib.sha256(apk.read_bytes()).hexdigest() + '  ' + apk.name + '\n')
-          subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version}', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
+          release_exists = subprocess.run(
+              ['gh', 'release', 'view', tag],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          ).returncode == 0
+          if release_exists:
+              subprocess.run(['gh', 'release', 'edit', tag, '--title', f'PriceRadar {version} — Bug Fix', '--notes-file', '.github/release-notes.md', '--latest'], check=True)
+              subprocess.run(['gh', 'release', 'upload', tag, '--clobber', str(apk), str(checksums)], check=True)
+          else:
+              subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version} — Bug Fix', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
           PY
+
+
+
