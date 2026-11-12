@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 val LocalOneUiMode = staticCompositionLocalOf { false }
 
 @Composable
-fun RadarTheme(oneUiMode: Boolean = false, content: @Composable () -> Unit) {
+fun RadarTheme(oneUiMode: Boolean = true, accent: Color = Color(0xFF4C8DFF), content: @Composable () -> Unit) {
     val radarColors = darkColorScheme(
         primary = Color(0xFFA8C7FF), onPrimary = Color(0xFF092650),
         primaryContainer = Color(0xFFB6D0FF), onPrimaryContainer = Color(0xFF0B2449),
@@ -24,8 +24,8 @@ fun RadarTheme(oneUiMode: Boolean = false, content: @Composable () -> Unit) {
         surfaceContainerHighest = Color(0xFF243146), outlineVariant = Color(0xFF354154)
     )
     val oneUiColors = darkColorScheme(
-        primary = Color(0xFF78A9FF), onPrimary = Color(0xFF071A33),
-        primaryContainer = Color(0xFF1D4F91), onPrimaryContainer = Color(0xFFD9E7FF),
+        primary = accent, onPrimary = Color.White,
+        primaryContainer = accent.copy(alpha = .30f), onPrimaryContainer = Color.White,
         background = Color(0xFF000000), surface = Color(0xFF171717),
         surfaceVariant = Color(0xFF2A2A2A), onSurfaceVariant = Color(0xFFC7C7C7),
         secondary = Color(0xFF9DBEFF), secondaryContainer = Color(0xFF263D63),
