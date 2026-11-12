@@ -143,6 +143,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(WatchSort.RECENT) }
     var status by rememberSaveable { mutableStateOf(WatchStatus.ALL) }
+    val displayPreferences = remember { context.getSharedPreferences("performance", android.content.Context.MODE_PRIVATE) }
+    var compactCards by remember { mutableStateOf(displayPreferences.getBoolean("compact_watchlist", false)) }
     val visible by produceState<List<Product>>(emptyList(), products, query, filter, sort, status) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(products, query, filter, sort, status) }
     }
@@ -315,6 +317,24 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             placeholder = { Text("Search your watchlist") }, shape = RoundedCornerShape(24.dp), singleLine = true,
                             colors = TextFieldDefaults.colors(focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent),
                             leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
+                        item {
+                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                SegmentedButton(
+                                    selected = !compactCards,
+                                    onClick = { compactCards = false; displayPreferences.edit().putBoolean("compact_watchlist", false).apply() },
+                                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                                    icon = { Icon(Icons.Default.ViewAgenda, null, Modifier.size(18.dp)) },
+                                    label = { Text("Comfortable") }
+                                )
+                                SegmentedButton(
+                                    selected = compactCards,
+                                    onClick = { compactCards = true; displayPreferences.edit().putBoolean("compact_watchlist", true).apply() },
+                                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                                    icon = { Icon(Icons.Default.ViewList, null, Modifier.size(18.dp)) },
+                                    label = { Text("Compact") }
+                                )
+                            }
+                        }
                         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             (listOf("All") + Retailer.entries.map { it.label }).forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
                         } }
@@ -332,7 +352,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             chooseStore = { store -> discoveryQuery = p.name; discoveryStore = store; discovering = true },
                             refresh = { refresh(p.id) },
                             pause = { scope.launch { repo.pause(p.id, !p.paused) } },
-                            actionsEnabled = !busy && !loading
+                            actionsEnabled = !busy && !loading,
+                            compact = compactCards
                         ) { selected = p.id }
                     }
                 }
@@ -501,6 +522,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     refresh: () -> Unit,
     pause: () -> Unit,
     actionsEnabled: Boolean,
+    compact: Boolean,
     open: () -> Unit
 ) {
     val targetMet = p.price?.let { price -> p.target?.let { price <= it } } == true
@@ -509,7 +531,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     val movement = if (previous != null && p.price != null && previous > 0) (p.price!! - previous) * 100.0 / previous else null
     val accent = when { targetMet -> androidx.compose.ui.graphics.Color(0xFFA8F56A); p.error != null -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.primary }
     Card(onClick = open, modifier = modifier.fillMaxWidth().border(1.dp, accent.copy(alpha = .18f), RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (compact) CompactProductCard(p, targetMet, movement, accent, refresh, pause, actionsEnabled)
+        else Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 StoreBadge(p.retailer)
                 Spacer(Modifier.weight(1f))
@@ -556,6 +579,47 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         }
     }
 }
+
+@Composable
+private fun CompactProductCard(
+    p: Product,
+    targetMet: Boolean,
+    movement: Double?,
+    accent: Color,
+    refresh: () -> Unit,
+    pause: () -> Unit,
+    actionsEnabled: Boolean
+) {
+    Column(Modifier.padding(horizontal = 18.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            StoreBadge(p.retailer)
+            Spacer(Modifier.width(10.dp))
+            Text(p.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = if (targetMet) accent else MaterialTheme.colorScheme.onSurface)
+                Text(
+                    when {
+                        p.paused -> "Paused"
+                        p.error != null -> "Check failed"
+                        p.checked == 0L -> "Waiting for first check"
+                        else -> "Checked ${relativeStamp(p.checked)}"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (p.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            movement?.let { change ->
+                Text("${if (change <= 0) "↓" else "↑"} ${"%.1f".format(kotlin.math.abs(change))}%", color = if (change <= 0) Color(0xFFA8F56A) else MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.width(6.dp))
+            }
+            IconButton(onClick = refresh, enabled = actionsEnabled && !p.paused) { Icon(Icons.Default.Refresh, "Check price now", tint = MaterialTheme.colorScheme.primary) }
+            IconButton(onClick = pause, enabled = actionsEnabled) { Icon(if (p.paused) Icons.Default.PlayCircle else Icons.Default.PauseCircle, if (p.paused) "Resume tracking" else "Pause tracking") }
+        }
+    }
+}
 private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(time))
 private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): String {
     val seconds = ((now - time).coerceAtLeast(0L) / 1_000L)
@@ -578,8 +642,11 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
     var saved by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
+    var currency by rememberSaveable(p.id) { mutableStateOf("RON") }
+    var currencyExpanded by rememberSaveable(p.id) { mutableStateOf(false) }
     val uri = LocalUriHandler.current
     val context = LocalContext.current
+    val exchange by produceState<ExchangeRates?>(null, context) { value = CurrencyRates.load(context) }
     val points = remember(p.history, period) { p.history.filter { it.time >= System.currentTimeMillis() - period.duration.toMillis() } }
     val lowPrice = remember(points) { points.minOfOrNull { it.price } }
     val highPrice = remember(points) { points.maxOfOrNull { it.price } }
@@ -588,12 +655,34 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { StoreBadge(p.retailer) }
         item { Text(p.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
-        item { Surface(shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+        item { Surface(onClick = { currencyExpanded = !currencyExpanded }, shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.primaryContainer) {
             Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("LATEST OBSERVED PRICE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text(p.target?.let { "Your target: ${money(it)}" } ?: "Add a target below to get notified", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(p.price?.let { convertedMoney(it, currency, exchange) } ?: "No price yet", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(p.target?.let { "Your target: ${convertedMoney(it, currency, exchange)}" } ?: "Add a target below to get notified", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 if (p.checked > 0L) Text("Updated ${relativeStamp(p.checked)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .78f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CurrencyExchange, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.width(7.dp))
+                    Text("$currency · tap for price conversion", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                if (currencyExpanded) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("RON", "EUR", "USD", "GBP").forEach { code ->
+                            FilterChip(selected = currency == code, onClick = { currency = code }, label = { Text(code) }, enabled = code == "RON" || exchange != null)
+                        }
+                    }
+                    Text(
+                        if (exchange == null) "Loading estimated exchange rates…" else "Estimated daily rate${exchange?.date?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .78f)
+                    )
+                    if (currency != "RON" && p.price != null) TextButton(onClick = {
+                        uri.openUri("https://www.google.com/search?q=${p.price!! / 100.0}+RON+to+$currency")
+                    }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
+                        Icon(Icons.Default.OpenInNew, null, Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)); Text("Check on Google")
+                    }
+                }
             }
         } }
 
