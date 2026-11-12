@@ -424,7 +424,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         } }
                         item { Text("Background checks may be delayed by Android battery controls. Pull down on the watchlist for an immediate check.", Modifier.padding(horizontal = 14.dp, vertical = 4.dp), fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF999999)) }
                         item { Spacer(Modifier.height(18.dp)) }
-                } }
+                } } }
             }
         }
     }
