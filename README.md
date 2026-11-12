@@ -1,105 +1,150 @@
 # PriceRadar
 
-Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
+<p align="center">
+  <strong>A native Android price tracker for Romanian retailers.</strong><br>
+  Watch products from eMAG, Vexio, and Altex, understand real price changes, and get notified when it is actually worth buying.
+</p>
 
-## New in 1.3.1
-- Fixes an immediate optimized-build startup crash: Room/WorkManager reflectively constructs `WorkDatabase_Impl`, whose no-argument constructor R8 had removed. An explicit keep rule preserves it.
-- Tagged releases now require an Android 12 tablet-emulator smoke test of the optimized APK (fresh launch, restart, main-screen rendering and rotation) before publication.
+<p align="center">
+  <a href="https://github.com/Clysmic590/PriceRadar/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Clysmic590/PriceRadar?display_name=tag&sort=semver"></a>
+  <a href="https://github.com/Clysmic590/PriceRadar/actions/workflows/android.yml"><img alt="Android build" src="https://github.com/Clysm590/PriceRadar/actions/workflows/android.yml/badge.svg"></a>
+  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
+</p>
 
-## New in 1.3.0: discovery and smoother rendering
-- Find product searches by name, with eMAG, Vexio and Altex filters, store-labeled results, tracking and view/buy actions. Each tracked listing also has store search shortcuts.
-- When native search results cannot be extracted, browse the selected store inside the app, open a product and tap Track this product. Paste link and Android Share-sheet import remain available.
-- Search results are previews and never become history observations. Store results can differ in variant, seller and availability; cross-store identity matching is not claimed.
-- Short directional transitions cover tabs and product details. Press/refresh effects update drawing layers; charts cache paths and cap geometry at 240 points while retaining bucket extremes and endpoints.
-- Reduce motion is enabled by default on Android low-RAM devices and can be changed in Settings. Animations respect Android system animation settings.
-- Release APKs use R8 code optimization and resource shrinking; CI now builds the optimized APK, retaining the same development signing key for updates.
-- Startup database reads and watchlist filtering run off the UI thread. Saving one product no longer re-reads every product/history from SQLite. Refresh requests serialize independently of watchlist edits and re-check whether a product was paused/deleted before saving a response.
+## What PriceRadar does
 
-Native search availability was checked on November 11, 2026: the eMAG search request returned HTTP 410; Vexio and Altex returned HTML without usable product listings. No successful live native search extraction is claimed. The parser has synthetic-fixture tests; in-app store browsing and retailer behavior require device testing. Search requests are explicit, limited to three stores, time out after 12 seconds, cap responses at 2 MB and cache successful results briefly in memory. Only one store browser exists at a time and is destroyed when closed. It uses the store's own JavaScript and may be heavier than native screens.
+PriceRadar keeps price tracking local, simple, and transparent. Add an exact product link or use the in-app retailer browser, then let the app build a real history from successful checks on your device.
 
-## New in 1.2.0
-- Animated tab transitions and springy product-card presses.
-- Pull down on the watchlist to refresh active products; tab scroll positions are retained.
-- Filter active/paused products, reached targets and failed checks alongside retailer/search filters.
-- Clear search, reset filters, see matching counts and share a product through Android's share sheet.
-- Refresh explains when there are no active products to check.
+- Track products from **eMAG**, **Vexio**, and **Altex**
+- Receive **price-drop notifications**
+- Set **target-price alerts** and a minimum drop threshold
+- View price history for **1 day, 7 days, 1 month, or 1 year**
+- Detect visible **coupon and voucher text**
+- Flag suspicious advertised discounts using the preceding 30 days of observations
+- Pause, resume, search, filter, sort, share, and refresh tracked products
+- Import retailer links from Android's **Share** sheet
+- Export observed history as **CSV**
+- Use an optimized Material 3 dark interface with transitions, loading skeletons, tactile feedback, and polished empty states
 
-## New in 1.1.6
-- One UI-inspired dark appearance for every install, with rounded panels, blue accents and gentle navigation, refresh, watchlist and chart animations. The theme picker has been removed; existing theme preferences no longer apply.
-- Notification status follows Android app/category settings; refresh feedback dismisses automatically (respecting accessibility timeout preferences).
-- Search by product or retailer and sort by recently checked, price, name or proximity to target.
-- Pause/resume individual products while keeping observations and alert settings.
-- Refresh only the open product; the watchlist refresh checks all active products.
-- Set a minimum drop threshold from 0–50% to reduce noisy alerts. Target crossings remain independent of this threshold.
-- Tap a notification to open its product, including when the app is already running.
-- Export all observed history as CSV through Android's document picker, with exact RON amounts and UTC timestamps. CSV is a history export, not a restorable backup.
-- See target progress and refresh feedback in the interface.
+## PriceRadar 1.5.2
 
-Existing watchlists migrate automatically: absent pause and threshold fields default to active tracking and any-drop alerts. Live retailer limitations below still apply. New document-picker, notification-navigation and pause controls require device testing.
+Version 1.5.2 is a bug-fix release that corrects the version shown inside the app and packages the latest interface improvements in a correctly versioned build.
 
-Starting with 1.1, debug builds use the repository's **public development-only signing key**, so future debug APK updates can retain app data. Never use this key for a production release. The original 1.0 APK used a temporary CI key: Android may require uninstalling that version before installing 1.1, which clears its local watchlist/history. Schema migration preserves data only when installing with a matching signing key.
+It also includes a hidden **One UI 9-inspired mode**. This is a custom Jetpack Compose presentation inspired by Samsung's visual language; it is **not** Samsung One UI, official SESL9, or a Samsung framework port.
 
-## Features
-- Track HTTPS product links from eMAG, Vexio and Altex, including Android Share-sheet import.
-- Local SQLite persistence, manual refresh and approximate six-hour WorkManager checks.
-- Price-drop notifications and configurable target-price crossing alerts. Enable notification permission in Settings.
-- Observed price history: 1 day, 7 days, 30-day month and 365-day year, with charts and low/high values.
-- Public coupon/voucher text detection. Codes and eligibility are not verified at checkout.
-- Fake-discount heuristic: flags an advertised reference price over 5% above the lowest price observed in the preceding 30 days, after at least seven distinct observed days. This is an evidence signal, not a legal finding.
+[Download PriceRadar 1.5.2](https://github.com/Clysmic590/PriceRadar/releases/tag/v1.5.2)
 
-No fabricated history or seeded live prices. History accumulates on this device after successful checks. No backend, login or historical-price provider is included. Failed checks preserve previous observations and display an error.
+The release contains:
 
-## Build and download
+- `PriceRadar-1.5.2.apk`
+- `SHA256SUMS.txt`
 
-Use JDK 17, Android SDK platform 37, and Gradle Wrapper:
+The APK is development-signed for sideloading and is not a Play Store release.
+
+## How price tracking works
+
+1. Add an exact HTTPS product page from a supported retailer.
+2. PriceRadar extracts public structured data and visible product metadata.
+3. Successful checks are stored locally in SQLite.
+4. WorkManager performs approximate background checks, while manual refresh is available at any time.
+5. Alerts are generated for qualifying drops and target-price crossings.
+
+Failed checks never fabricate a price or overwrite the last successful observation. Price history begins when you start tracking; the app does not ship seeded or purchased historical-price data.
+
+## Fake-discount detector
+
+The detector flags an advertised reference price when it is more than 5% above the lowest price observed during the preceding 30 days, after at least seven distinct observed days exist.
+
+This is an evidence signal—not a legal finding. Sparse history, product variants, marketplace sellers, personal offers, shipping, and checkout-only promotions can affect the result.
+
+## Privacy
+
+- No PriceRadar account
+- No backend service
+- No analytics SDK
+- No API credentials required
+- Watchlist and history stay on the device
+- Retailer pages are contacted only for searches, browsing, and price checks initiated by the app
+
+The embedded retailer browser runs each store's own JavaScript and may use more resources than native screens.
+
+## Install
+
+1. Open the [latest release](https://github.com/Clysmic590/PriceRadar/releases/latest).
+2. Download the APK and `SHA256SUMS.txt`.
+3. Verify the checksum if desired.
+4. Allow installation from your browser or file manager, then install the APK.
+
+Android 8 or newer is supported. PriceRadar targets Android 17 / API 37.
+
+### Verify SHA-256
+
+Linux or macOS:
+
+```sh
+sha256sum -c SHA256SUMS.txt
+```
+
+Windows PowerShell:
+
+```powershell
+Get-FileHash .\PriceRadar-1.5.2.apk -Algorithm SHA256
+```
+
+For v1.5.2, the expected APK SHA-256 is:
+
+```text
+4a52919900e66d36b43c1761ae262b6d00cde540f71aec13fd5915c7f1e0d4f9
+```
+
+## Build from source
+
+Requirements:
+
+- JDK 17
+- Android SDK platform 37
+- Android build tools 37.0.0
+
+Linux or macOS:
 
 ```sh
 ./gradlew testDebugUnitTest lintRelease assembleRelease
 ```
 
-On Windows use `gradlew.bat`. Set `ANDROID_HOME` or create an untracked `local.properties` with `sdk.dir`.
+Windows:
 
-Every push, pull request or manual **Actions → Android optimized APK → Run workflow** compiles, tests, lints and uploads **PriceRadar-APK**. Open a successful run and download its artifact ZIP; extract `app-release.apk`. This is a code/resource-shrunk release build signed with the repository's public development key for sideloading, not a Play Store release. Debug builds remain available with `./gradlew assembleDebug`. Artifacts expire after 30 days.
+```powershell
+.\gradlew.bat testDebugUnitTest lintRelease assembleRelease
+```
 
-## Retailer integration status — live testing required
+Set `ANDROID_HOME`, or create an untracked `local.properties` containing `sdk.dir`.
 
-| Retailer | Implementation | Verification still required |
+GitHub Actions performs unit tests, release lint, an optimized R8/resource-shrunk APK build, and an Android 12 startup smoke test for tagged releases. Verified releases receive both the APK and its generated checksum.
+
+## Retailer integration status
+
+All retailer integrations remain experimental and require physical-device testing. Retailers can change markup, offers, redirects, JavaScript behavior, or anti-bot rules without notice.
+
+| Retailer | Implemented | Still requires testing |
 | --- | --- | --- |
-| eMAG | Public JSON-LD / product metadata price extraction; reference-price and coupon selectors | Real product and marketplace offer identity, variant selection, anti-bot behavior, coupon accuracy, redirects, price currency and availability |
-| Vexio | Same public structured-data extractor | Real pages, stock/variant changes, HTML price formatting, coupon/reference selectors and request behavior |
-| Altex | Same public structured-data extractor | JavaScript-rendered offers, stock/variant changes, promotions, coupon/reference selectors and request behavior |
+| eMAG | Public JSON-LD/product metadata extraction, reference-price and coupon selectors | Marketplace seller identity, variants, availability, redirects, coupon accuracy, and anti-bot behavior |
+| Vexio | Public structured-data extraction and store-browser fallback | Live page access, stock/variant changes, price formatting, promotions, and request behavior |
+| Altex | Public structured-data extraction and store-browser fallback | JavaScript-rendered offers, variants, availability, promotions, and request behavior |
 
-All three integrations are experimental and **have not passed end-to-end retailer validation**. Unit tests use synthetic HTML fixtures plus a minimal eMAG structured-offer fixture captured during development (product title shortened; descriptive content removed). They validate extraction logic only. Requests do not execute JavaScript, authenticate, follow redirects, or bypass CAPTCHA. A retailer can reject or change its HTML; the app reports failure rather than making up a price. No official retailer API partnership is claimed. Check retailer terms before broader use.
+Parsers have synthetic-fixture tests, but that does not prove live retailer compatibility. PriceRadar does not authenticate, bypass CAPTCHA, or claim an official partnership with any retailer.
 
-Development smoke check: a direct public request to a Vexio Sony WH1000XM5B product URL returned HTTP 403 on November 10, 2026. This confirms an access limitation in this environment, not successful price extraction. Other networks/devices can behave differently.
+Notifications and background scheduling also need broader testing on physical Android 17 devices, including denied notification permission, reboot, Doze, process death, and target crossings. WorkManager scheduling is best effort rather than real time.
 
-The eMAG sample `/pd/DFHWK8MBM/` returned HTTP 200 with a RON JSON-LD Offer compatible with the parser. This single-page smoke check does not verify marketplace variants, coupons or continued access. An Altex sample did not complete during the development request and remains unverified.
+## Project structure
 
-Notifications and background scheduling still need on-device Android 17 testing, including denied permission, reboot, Doze, process death, and target crossings. WorkManager is periodic and best effort, not real time. Shipping, personal offers and checkout-only discounts are excluded. Fake-discount results are limited by sparse local history and detected reference-price markup.
+- `MainActivity.kt` — Compose screens and navigation
+- `Repository.kt` — persistent application state
+- `RetailerClient.kt` — retailer requests and public-data extraction
+- `Models.kt` — price-history and discount rules
+- `Alerts.kt` — notifications and background work
+- `.github/workflows/android.yml` — verification and release pipeline
 
-## Manual acceptance checks
-1. Add one exact product URL per retailer; compare name, seller/variant, RON price and availability against its page.
-2. Refresh, restart and rotate the app; verify persisted history/targets. Check each period, including empty and single-point charts.
-3. Enable notifications and use the test button. Verify drops and target crossings using a controlled test fixture; ensure unchanged prices do not repeatedly alert.
-4. Verify coupon text against actual checkout requirements and reference-price markup against retailer display.
-5. Test offline, HTTP errors, redirects and challenge pages; ensure no new price point is inserted.
-6. Collect seven observed days before assessing suspicious reference prices. Verify that old prices outside the 30-day window do not affect the result.
-7. In Settings, allow notifications and verify the status changes to "Notifications enabled" and the button to "Notification settings". Send a test notification and verify the confirmation and delivered notification. Disable app notifications or the Price alerts category in Android settings, then return to the app and verify the status updates. Re-enable them and return again. On Android 13+, also deny the permission request and verify the button provides access to Android settings, including after repeated denial.
-8. Verify the One UI-inspired dark appearance on a fresh install and an update from 1.1.5 (including devices that previously selected Original or ColorOS). Verify the theme picker is absent, text and controls remain readable, and the appearance survives restart/rotation. Confirm refresh feedback clears after about six seconds (or the Android accessibility timeout), and repeat a refresh. Check animations with Android animation scales enabled and disabled.
+## Disclaimer
 
-
-## Structure
-`MainActivity.kt` contains Compose screens; `Repository.kt` owns persistent state; `RetailerClient.kt` extracts public listings; `Models.kt` contains price and discount rules; `Alerts.kt` owns notifications and scheduled work. No API credentials are required or committed.
-
-## 1.2.0 acceptance checks
-- Pull down at the top of an empty, paused-only and populated watchlist. Verify appropriate feedback and only one refresh at a time.
-- Combine status, retailer and search filters, then clear/reset them. Unknown prices must not count as reached targets.
-- Scroll each tab, switch away/back, and verify position is retained. Check tab transitions and card presses with system animation scales disabled as well.
-- Share a product and verify its name and exact URL; cancel the share sheet and confirm the app returns normally.
-
-## Discovery/performance acceptance checks
-- Search a name, a model with punctuation and a nonexistent product; inspect each store and its unavailable/empty state. Open a native result and verify exact variant, seller, price/currency and availability at the store.
-- Browse each store in-app, navigate to a product, track without copying a URL, and use Open store / buy. Verify browsing stops at other sites and login/CAPTCHA/SSL errors are not bypassed. Back/results/close must free the browser; repeat on a low-memory device.
-- Search rapidly, switch stores, leave during requests, rotate and retry offline. Confirm no stale results are applied to a new query and no search preview is inserted into history.
-- Populate a large watchlist and dense history, cold-start, scroll/sort/filter, refresh while pausing/removing products, and open charts. Confirm settings/history survive restart and paused/deleted products are not restored by an in-flight refresh.
-- Measure frame times and memory on an actual lower-end phone in both motion modes; responsiveness improvements are implemented but no lag-free claim or device benchmark has been established.
+PriceRadar is an independent project. eMAG, Vexio, Altex, Samsung, and One UI are trademarks of their respective owners. Prices, coupons, stock, and retailer terms should always be confirmed on the retailer's checkout page.
