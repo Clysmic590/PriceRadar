@@ -1,9 +1,15 @@
-Fixes the immediate startup crash in the optimized 1.3.0 APK.
+## Bug-fix release
 
-R8 had removed the public no-argument constructor Room uses to initialize WorkManager's database. The constructor is now explicitly retained. Release publishing is gated on launching the actual optimized APK on an Android 12 tablet emulator, restarting it and rotating the display.
+PriceRadar 1.5.2 fixes the version shown inside the app and packages the latest hidden One UI 9-inspired mode in a correctly versioned release build.
 
-Download **PriceRadar-1.3.1.apk** below and install it over 1.3.0. The signing key is unchanged; uninstalling is not required. Android version code: 7. Android 8+ is supported.
+### Included fixes
 
-Includes all 1.3 features: product-name search, eMAG/Vexio/Altex choices, store-browser tracking, smoother transitions, reduced motion and optimized rendering. Native search remains experimental and uses the store-browser fallback when results are unavailable.
+- The Settings footer now reports version 1.5.2 from generated build metadata.
+- The hidden One UI 9-inspired interface remains available alongside the standard PriceRadar design.
+- Includes the current watchlist tagline rotation, transitions, loading skeletons, tactile feedback, and polished empty states.
 
-Validation: unit tests, release lint, optimized APK build and Android 12 release-APK startup checks. APK checksum is in SHA256SUMS.txt. This is a development-signed sideload build, not a Play Store release.
+Download **PriceRadar-1.5.2.apk** below. The signing key is unchanged, so it can be installed over the previous build. Android version code: 11. Android 8+ is supported.
+
+Validation: unit tests, release lint, optimized APK build, and Android 12 startup smoke test. The APK checksum is provided in **SHA256SUMS.txt**. This is a development-signed sideload build, not a Play Store release.
+
+Retailer integrations for eMAG, Vexio, and Altex remain experimental and should be tested on physical devices because retailer markup and anti-bot behavior can change.
