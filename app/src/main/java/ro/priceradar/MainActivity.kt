@@ -3,6 +3,8 @@ package ro.priceradar
 import android.Manifest
 import android.app.ActivityManager
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +27,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -91,14 +94,17 @@ class MainActivity : ComponentActivity() {
             }
             val preferences = remember { getSharedPreferences("performance", MODE_PRIVATE) }
             var reducedMotion by remember { mutableStateOf(preferences.getBoolean("reduced_motion", getSystemService(ActivityManager::class.java).isLowRamDevice)) }
-            var accentArgb by remember { mutableIntStateOf(preferences.getInt("one_ui_accent", 0xFF4C8DFF.toInt())) }
+            var accentArgb by remember {
+                val saved = preferences.getInt("one_ui_accent", OneUiAccentPalette.first().toArgb())
+                mutableIntStateOf(validatedAccent(saved).toArgb())
+            }
             CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
                 RadarTheme(true, Color(accentArgb)) {
                     PriceRadar(shared, openedProduct, { openedProduct = null }, { value ->
                         reducedMotion = value
                         preferences.edit().putBoolean("reduced_motion", value).apply()
-                    }, Color(accentArgb), { color ->
-                        accentArgb = color.toArgb()
+                    }, validatedAccent(accentArgb), { color ->
+                        accentArgb = validatedAccent(color.toArgb()).toArgb()
                         preferences.edit().putInt("one_ui_accent", accentArgb).apply()
                     }) { shared = "" }
                 }
@@ -143,16 +149,19 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     val couponProducts = remember(products) { products.filter { it.coupons.isNotEmpty() } }
     val activeCount = remember(products) { products.count { !it.paused } }
     val reachedCount = remember(products) { products.count { p -> p.price?.let { price -> p.target?.let { price <= it } } == true } }
+    val failedCount = remember(products) { products.count { it.error != null } }
     val watchScroll = rememberLazyListState()
     val couponScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
     var notice by remember { mutableStateOf<String?>(null) }
+    var removedProduct by remember { mutableStateOf<Product?>(null) }
     val accessibility = LocalAccessibilityManager.current
     val noticeTimeout = accessibility?.calculateRecommendedTimeoutMillis(6000, containsText = true, containsControls = true) ?: 6000L
     LaunchedEffect(notice, noticeTimeout) {
         if (notice != null) {
             delay(noticeTimeout)
             notice = null
+            removedProduct = null
         }
     }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { destination ->
@@ -229,7 +238,18 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         snackbarHost = {
             notice?.let { message -> Snackbar(
                 modifier = Modifier.padding(16.dp),
-                action = { TextButton(onClick = { notice = null }) { Text("Dismiss") } }
+                action = {
+                    if (removedProduct != null) TextButton(onClick = {
+                        removedProduct?.let { productToRestore ->
+                            removedProduct = null
+                            scope.launch {
+                                repo.restore(productToRestore)
+                                notice = "Product restored"
+                            }
+                        }
+                    }) { Text("Undo") }
+                    else TextButton(onClick = { notice = null }) { Text("Dismiss") }
+                }
             ) { Text(message) } }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -251,12 +271,27 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     ProductDetail(displayProduct,
                         save = { target, drops, targets, minimum -> scope.launch { repo.settings(displayProduct.id, target, drops, targets, minimum) } },
                         pause = { value -> scope.launch { repo.pause(displayProduct.id, value) } },
-                        remove = { scope.launch { repo.remove(displayProduct.id); selected = null } })
+                        remove = {
+                            removedProduct = displayProduct
+                            scope.launch {
+                                repo.remove(displayProduct.id)
+                                selected = null
+                                notice = "Stopped tracking ${displayProduct.name}"
+                            }
+                        })
                 } else when (screen.tab) {
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
-                    LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { PageHeading("Your watchlist", watchlistTagline) }
                     item { WatchOverview(products.size, activeCount, reachedCount) }
+                    if (products.isNotEmpty()) item {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = status == WatchStatus.ACTIVE, onClick = { status = WatchStatus.ACTIVE }, label = { Text("Active $activeCount") }, leadingIcon = { Icon(Icons.Default.Visibility, null, Modifier.size(18.dp)) })
+                            FilterChip(selected = status == WatchStatus.TARGET_MET, onClick = { status = WatchStatus.TARGET_MET }, label = { Text("Targets $reachedCount") }, leadingIcon = { Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)) })
+                            FilterChip(selected = status == WatchStatus.FAILED, onClick = { status = WatchStatus.FAILED }, label = { Text("Needs attention $failedCount") }, leadingIcon = { Icon(Icons.Default.ErrorOutline, null, Modifier.size(18.dp)) })
+                            if (status != WatchStatus.ALL) AssistChip(onClick = { status = WatchStatus.ALL }, label = { Text("Show all") }, leadingIcon = { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) })
+                        }
+                    }
                     item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     if (products.isNotEmpty()) {
                         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -281,7 +316,11 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     }
                     items(visible, key = { it.id }, contentType = { "tracked-product" }) { p ->
                         ProductCard(p, Modifier,
-                            chooseStore = { store -> discoveryQuery = p.name; discoveryStore = store; discovering = true }) { selected = p.id }
+                            chooseStore = { store -> discoveryQuery = p.name; discoveryStore = store; discovering = true },
+                            refresh = { refresh(p.id) },
+                            pause = { scope.launch { repo.pause(p.id, !p.paused) } },
+                            actionsEnabled = !busy && !loading
+                        ) { selected = p.id }
                     }
                 }
                 }
@@ -289,13 +328,43 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     item { PageHeading("Offers for you", "Coupons from the products you follow.") }
                     item { HelpDisclosure("How offers work", "Coupon text found on tracked product pages appears here. Check availability and eligibility with the retailer at checkout.") }
                     val found = couponProducts
-                    if (found.isEmpty()) item { Text("No coupon text detected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (found.isEmpty()) item {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Icon(Icons.Default.LocalOffer, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                            Text("No coupons found yet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Run a fresh check or add another product and detected offers will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Button(onClick = { tab = 0; discoveryQuery = ""; discoveryStore = null; discovering = true }) { Text("Find a product") }
+                        }
+                    }
                     items(found, key = { it.id }) { p -> Card(onClick = { selected = p.id }) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(p.retailer.label, color = MaterialTheme.colorScheme.primary); Text(p.name, fontWeight = FontWeight.Bold); p.coupons.forEach { Text(it) }; if (p.error != null) Text("Last check failed; offers may be stale", color = MaterialTheme.colorScheme.error) } } }
                 }
                 else -> LazyColumn(state = settingsScroll, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         item { OneUiSettingsHeader() }
                         item { OneUiSettingsGroup("Quick actions") {
                             OneUiSettingsRow(Icons.Default.Refresh, "Check all prices now", if (busy) "Price check in progress" else "Refresh every active product", { refresh(null) }, enabled = !busy && !loading)
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.PlayCircle, "Resume all products", "Turn monitoring back on for every saved product", {
+                                scope.launch { repo.pauseAll(false); notice = "All products resumed" }
+                            }, enabled = products.any { it.paused })
+                            OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.PauseCircle, "Pause all products", "Keep history but stop checks and alerts", {
+                                scope.launch { repo.pauseAll(true); notice = "All products paused" }
+                            }, enabled = products.any { !it.paused })
+                            if (failedCount > 0) {
+                                OneUiDivider()
+                                OneUiSettingsRow(Icons.Default.ErrorOutline, "Retry failed checks", "$failedCount ${if (failedCount == 1) "product needs" else "products need"} attention", {
+                                    if (!busy) {
+                                        busy = true
+                                        scope.launch {
+                                            try {
+                                                val failedIds = repo.products.value.filter { it.error != null && !it.paused }.map { it.id }
+                                                val succeeded = failedIds.count { repo.refresh(context, it) }
+                                                notice = if (failedIds.isEmpty()) "Resume failed products before retrying" else "Retried $succeeded of ${failedIds.size} failed checks"
+                                            } finally { busy = false }
+                                        }
+                                    }
+                                }, enabled = !busy)
+                            }
                             OneUiDivider()
                             OneUiSettingsRow(Icons.Default.NotificationsActive, "Test notification", "Preview a PriceRadar alert", {
                                 notificationsEnabled = Alerts.enabled(context)
@@ -396,7 +465,12 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         })
     if (adding) AlertDialog(onDismissRequest = { adding = false; error = null }, title = { Text("Track a product") }, text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Paste an HTTPS product link from eMAG, Vexio or Altex.")
-        OutlinedTextField(url, onValueChange = { url = it; error = null }, label = { Text("Product URL") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), isError = error != null)
+        OutlinedTextField(url, onValueChange = { url = it; error = null }, label = { Text("Product URL") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), isError = error != null,
+            trailingIcon = { IconButton(onClick = {
+                val clip = context.getSystemService(ClipboardManager::class.java).primaryClip
+                val pasted = clip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                if (pasted.isNotBlank()) { url = pasted; error = null } else error = "Clipboard is empty"
+            }) { Icon(Icons.Default.ContentPaste, "Paste link") } })
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     } }, confirmButton = { TextButton(onClick = { scope.launch { try { val id = repo.add(url); adding = false; url = ""; selected = id; refresh(id) } catch (e: Exception) { error = e.message } } }) { Text("Start tracking") } }, dismissButton = { TextButton(onClick = { adding = false; error = null }) { Text("Cancel") } })
 }
@@ -407,8 +481,17 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
 @Composable private fun InfoCard(title: String, body: String) {
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, fontWeight = FontWeight.SemiBold); Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) } }
 }
-@Composable private fun ProductCard(p: Product, modifier: Modifier = Modifier, chooseStore: (Retailer) -> Unit, open: () -> Unit) {
+@Composable private fun ProductCard(
+    p: Product,
+    modifier: Modifier = Modifier,
+    chooseStore: (Retailer) -> Unit,
+    refresh: () -> Unit,
+    pause: () -> Unit,
+    actionsEnabled: Boolean,
+    open: () -> Unit
+) {
     val targetMet = p.price?.let { price -> p.target?.let { price <= it } } == true
+    val stale = p.checked > 0L && System.currentTimeMillis() - p.checked > 24L * 60 * 60 * 1_000
     val previous = p.history.dropLast(1).lastOrNull()?.price
     val movement = if (previous != null && p.price != null && previous > 0) (p.price!! - previous) * 100.0 / previous else null
     val accent = when { targetMet -> androidx.compose.ui.graphics.Color(0xFFA8F56A); p.error != null -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.primary }
@@ -438,11 +521,40 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Retailer.entries.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
             }
-            Text(if (p.checked == 0L) "Waiting for the first check" else "Last checked ${stamp(p.checked)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when {
+                        p.checked == 0L -> "Waiting for the first check"
+                        stale -> "Price may be stale · checked ${relativeStamp(p.checked)}"
+                        else -> "Checked ${relativeStamp(p.checked)}"
+                    },
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                IconButton(onClick = refresh, enabled = actionsEnabled && !p.paused) {
+                    Icon(Icons.Default.Refresh, "Check price now", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = pause, enabled = actionsEnabled) {
+                    Icon(if (p.paused) Icons.Default.PlayCircle else Icons.Default.PauseCircle,
+                        if (p.paused) "Resume tracking" else "Pause tracking")
+                }
+            }
         }
     }
 }
 private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(time))
+private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): String {
+    val seconds = ((now - time).coerceAtLeast(0L) / 1_000L)
+    return when {
+        seconds < 45 -> "just now"
+        seconds < 3_600 -> "${seconds / 60} min ago"
+        seconds < 86_400 -> "${seconds / 3_600} hr ago"
+        seconds < 172_800 -> "yesterday"
+        seconds < 604_800 -> "${seconds / 86_400} days ago"
+        else -> stamp(time)
+    }
+}
 
 @Composable private fun ProductDetail(p: Product, save: (Long?, Boolean, Boolean, Int) -> Unit, pause: (Boolean) -> Unit, remove: () -> Unit) {
     var period by rememberSaveable { mutableStateOf(Period.WEEK) }
@@ -452,12 +564,14 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
     var minimum by rememberSaveable(p.id, p.minimumDropPercent) { mutableStateOf(p.minimumDropPercent.toFloat()) }
     var saved by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
     val context = LocalContext.current
     val points = remember(p.history, period) { p.history.filter { it.time >= System.currentTimeMillis() - period.duration.toMillis() } }
     val lowPrice = remember(points) { points.minOfOrNull { it.price } }
     val highPrice = remember(points) { points.maxOfOrNull { it.price } }
     val assessment = remember(p.history, p.reference) { discountAssessment(p) }
+    LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { StoreBadge(p.retailer) }
         item { Text(p.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
@@ -470,7 +584,19 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
         } }
 
         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(if (p.paused) "Tracking paused" else "Tracking active", fontWeight = FontWeight.Bold); Text("Pause keeps your history and skips checks and alerts", style = MaterialTheme.typography.bodySmall) }; OneUiSwitch(!p.paused, { pause(!it) }) } }
-        p.price?.let { price -> p.target?.let { target -> item { InfoCard("Target progress", if (price <= target) "Your target is met · ${money(target - price)} below target" else "${money(price - target)} to go · target ${money(target)}") } } }
+        p.price?.let { price -> p.target?.let { target -> item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Target progress", fontWeight = FontWeight.SemiBold)
+                    Text(if (price <= target) "Your target is met · ${money(target - price)} below target" else "${money(price - target)} to go · target ${money(target)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(
+                        progress = { (target.toFloat() / price.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(8.dp),
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                }
+            }
+        } } }
         p.error?.let { item { InfoCard("Last check failed", "$it\nLast successful price is preserved.") } }
         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Period.entries.forEach { option -> FilterChip(selected = period == option, onClick = { period = option }, label = { Text(option.label) }) } } }
         item { Card { Column(Modifier.padding(20.dp)) {
@@ -484,6 +610,16 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
         item { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Your alerts", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             OutlinedTextField(targetText, onValueChange = { targetText = it; saved = false }, label = { Text("Target price in RON (optional)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = targetText.isNotBlank() && parseMoney(targetText) == null)
+            p.price?.let { current ->
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Current price" to current, "5% below" to (current * 95 / 100), "10% below" to (current * 90 / 100)).forEach { (label, value) ->
+                        AssistChip(onClick = {
+                            targetText = "%.2f".format(Locale.US, value / 100.0)
+                            saved = false
+                        }, label = { Text(label) })
+                    }
+                }
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Price-drop notifications", Modifier.weight(1f)); OneUiSwitch(drops, { drops = it; saved = false }) }
             Text(if (minimum.toInt() == 0) "Alert for any drop" else "Minimum drop: ${minimum.toInt()}% since the previous check")
             Slider(value = minimum, onValueChange = { minimum = it; saved = false }, valueRange = 0f..50f, steps = 49, enabled = drops)
@@ -497,6 +633,15 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
                 putExtra(Intent.EXTRA_TEXT, "${p.name}\n${p.url}")
             }, "Share product"))
         }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(8.dp)); Text("Share product") } }
+        item { OutlinedButton(onClick = {
+            context.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("${p.retailer.label} product", p.url))
+            copied = true
+        }, modifier = Modifier.fillMaxWidth()) {
+            Icon(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (copied) "Link copied" else "Copy product link")
+        } }
         item { OutlinedButton(onClick = { uri.openUri(p.url) }, modifier = Modifier.fillMaxWidth()) { Text("Open at ${p.retailer.label}") } }
         item { TextButton(onClick = { deleting = true }) { Text("Stop tracking", color = MaterialTheme.colorScheme.error) } }
     }
@@ -537,12 +682,25 @@ private fun stamp(time: Long) = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefa
 }
 
 @Composable private fun RadarWelcome() {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(shape = RoundedCornerShape(99.dp), color = MaterialTheme.colorScheme.primary.copy(alpha=.12f), modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha=.25f), RoundedCornerShape(99.dp))) {
-            Icon(Icons.Default.Radar, null, Modifier.padding(22.dp).size(44.dp), tint = MaterialTheme.colorScheme.primary)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .18f))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha=.12f)) {
+                Icon(Icons.Default.Radar, null, Modifier.padding(14.dp).size(30.dp), tint = MaterialTheme.colorScheme.primary)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Your radar is quiet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Add a product to start building its price history and watching for drops.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-        Text("Your radar is quiet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("Add a product and we’ll start building its price story, spotting drops and watching your target.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

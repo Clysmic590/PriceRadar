@@ -5,10 +5,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 val LocalOneUiMode = staticCompositionLocalOf { false }
+
+val OneUiAccentPalette = listOf(
+    Color(0xFF4C8DFF), Color(0xFF8B7CFF), Color(0xFFDA6CFF),
+    Color(0xFFFF5C8A), Color(0xFFFF7A45), Color(0xFF34C98F), Color(0xFF19B9D1)
+)
+
+fun validatedAccent(argb: Int): Color =
+    OneUiAccentPalette.firstOrNull { it.toArgb() == argb } ?: OneUiAccentPalette.first()
 
 @Composable
 fun RadarTheme(oneUiMode: Boolean = true, accent: Color = Color(0xFF4C8DFF), content: @Composable () -> Unit) {
@@ -28,9 +37,9 @@ fun RadarTheme(oneUiMode: Boolean = true, accent: Color = Color(0xFF4C8DFF), con
         primaryContainer = accent.copy(alpha = .30f), onPrimaryContainer = Color.White,
         background = Color(0xFF000000), surface = Color(0xFF171717),
         surfaceVariant = Color(0xFF2A2A2A), onSurfaceVariant = Color(0xFFC7C7C7),
-        secondary = Color(0xFF9DBEFF), secondaryContainer = Color(0xFF263D63),
-        onSecondaryContainer = Color(0xFFE0EAFF),
-        tertiary = Color(0xFF72D6FF), tertiaryContainer = Color(0xFF143F50),
+        secondary = accent, secondaryContainer = accent.copy(alpha = .26f),
+        onSecondaryContainer = Color.White,
+        tertiary = accent, tertiaryContainer = accent.copy(alpha = .20f),
         surfaceContainer = Color(0xFF171717), surfaceContainerHigh = Color(0xFF202020),
         surfaceContainerHighest = Color(0xFF292929), outlineVariant = Color(0xFF3B3B3B)
     )

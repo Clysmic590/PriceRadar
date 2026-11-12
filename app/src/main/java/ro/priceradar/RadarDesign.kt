@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -37,8 +38,13 @@ fun PageHeading(title: String, subtitle: String) {
 @Composable
 fun WatchOverview(total: Int, active: Int, reached: Int) {
     val accent = MaterialTheme.colorScheme.primary
+    val gradient = listOf(
+        lerp(Color(0xFF111820), accent, .32f),
+        lerp(Color(0xFF10151C), accent, .18f),
+        lerp(Color(0xFF101419), accent, .09f)
+    )
     Surface(color = Color.Transparent, shape = RoundedCornerShape(32.dp)) {
-        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF203C66), Color(0xFF17273F), Color(0xFF17212F)))).border(1.dp, accent.copy(alpha = .28f), RoundedCornerShape(32.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.fillMaxWidth().background(Brush.linearGradient(gradient)).border(1.dp, accent.copy(alpha = .38f), RoundedCornerShape(32.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(if (active > 0) "●  RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelMedium, color = accent)
@@ -98,8 +104,8 @@ fun DiscoveryTile(onClick: () -> Unit) {
 
 @Composable
 fun IconTile(icon: ImageVector) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp)) {
-        Icon(icon, null, Modifier.padding(12.dp).size(24.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+    Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = .28f), shape = RoundedCornerShape(16.dp)) {
+        Icon(icon, null, Modifier.padding(12.dp).size(24.dp), tint = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -208,10 +214,7 @@ fun OneUiSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
 
 @Composable
 fun OneUiAccentPicker(selected: Color, onSelected: (Color) -> Unit) {
-    val colors = listOf(
-        Color(0xFF4C8DFF), Color(0xFF8B7CFF), Color(0xFFDA6CFF),
-        Color(0xFFFF5C8A), Color(0xFFFF7A45), Color(0xFF34C98F), Color(0xFF19B9D1)
-    )
+    val colors = OneUiAccentPalette
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
         Text("Colour palette", fontSize = 17.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF5F5F5))
         Text("Choose the accent used for icons, switches and selected controls.", fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFFAAAAAA))

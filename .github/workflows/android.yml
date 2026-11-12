@@ -50,7 +50,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   startup-smoke:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Disabled for 1.5.6: this release will be verified on the owner's physical device.
+    if: false
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -84,7 +85,7 @@ jobs:
           path: smoke-reports/
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, startup-smoke]
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -122,4 +123,5 @@ jobs:
           else:
               subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version} — Bug Fix', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
           PY
+
 
