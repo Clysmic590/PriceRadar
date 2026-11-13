@@ -519,12 +519,15 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
 @Composable
 private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
     val reducedMotion = LocalReducedMotion.current
+    val scope = rememberCoroutineScope()
     var dragging by remember { mutableStateOf(false) }
     var draggedPosition by remember { mutableFloatStateOf(0f) }
     var settlingTab by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress, settlingTab) {
+    var settleAnimationFinished by remember { mutableStateOf(true) }
+    val settlePosition = remember { Animatable(0f) }
+    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress, settlingTab, settleAnimationFinished) {
         val target = settlingTab
-        if (target != null && !pagerState.isScrollInProgress && pagerState.settledPage == target) {
+        if (target != null && settleAnimationFinished && !pagerState.isScrollInProgress && pagerState.settledPage == target) {
             settlingTab = null
         }
     }
@@ -540,7 +543,7 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
             val pagerPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 2f)
             val pagePosition = when {
                 dragging -> draggedPosition
-                settlingTab != null -> settlingTab!!.toFloat()
+                settlingTab != null -> settlePosition.value
                 else -> pagerPosition
             }
             val pillOffset = pagePosition * segmentWidthPx
@@ -563,7 +566,9 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
                 Modifier.fillMaxSize().pointerInput(pagerState, segmentWidthPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
+                            scope.launch { settlePosition.stop() }
                             settlingTab = null
+                            settleAnimationFinished = true
                             dragging = true
                             draggedPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
                                 .coerceIn(0f, 2f)
@@ -574,10 +579,23 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
                         },
                         onDragEnd = {
                             val destination = bottomTabForPosition(draggedPosition)
-                            draggedPosition = destination.toFloat()
-                            settlingTab = destination
-                            dragging = false
-                            onSelect(destination)
+                            val releasedAt = draggedPosition
+                            scope.launch {
+                                settlePosition.snapTo(releasedAt)
+                                settleAnimationFinished = false
+                                settlingTab = destination
+                                dragging = false
+                                onSelect(destination)
+                                if (reducedMotion) {
+                                    settlePosition.snapTo(destination.toFloat())
+                                } else {
+                                    settlePosition.animateTo(
+                                        destination.toFloat(),
+                                        tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                    )
+                                }
+                                settleAnimationFinished = true
+                            }
                         }
                     ) { change, amount ->
                         change.consume()

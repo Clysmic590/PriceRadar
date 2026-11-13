@@ -10,11 +10,14 @@ data class Listing(val name: String, val price: Long, val reference: Long?, val 
 /** Public HTML only: no login, CAPTCHA bypass or private retailer API. */
 class RetailerClient {
     fun fetch(url: String): Listing {
-        Retailer.fromUrl(url)
-        val response = Jsoup.connect(url).userAgent("PriceRadar/1.0 (personal price tracker)")
-            .timeout(20000).maxBodySize(3_000_000).followRedirects(false).execute()
+        val retailer = Retailer.fromUrl(url)
+        val response = Jsoup.connect(url)
+            .userAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
+            .header("Accept-Language", "ro-RO,ro;q=0.9,en;q=0.7")
+            .timeout(20000).maxBodySize(3_000_000).followRedirects(true).execute()
         check(response.statusCode() == 200) { "Retailer returned HTTP ${response.statusCode()}" }
-        return parse(response.parse(), url)
+        check(Retailer.fromUrl(response.url().toString()) == retailer) { "Retailer redirected to an unsupported site" }
+        return parse(response.parse(), response.url().toString())
     }
     fun parse(doc: Document, url: String): Listing {
         Retailer.fromUrl(url)
@@ -40,7 +43,7 @@ class RetailerClient {
         val currency = offer?.optString("priceCurrency")?.takeIf { it.isNotBlank() }
             ?: doc.selectFirst("meta[property=product:price:currency]")?.attr("content")
         check(currency == null || currency == "RON") { "Unsupported currency: $currency" }
-        val raw = offer?.optString("price")?.takeIf { it.isNotBlank() }
+        val raw = offer?.priceValue()
             ?: doc.selectFirst("meta[property=product:price:amount], meta[itemprop=price]")?.attr("content")
             ?: doc.selectFirst("[itemprop=price]")?.let { it.attr("content").ifBlank { it.text() } }
         val price = raw?.let(::parseMoney) ?: error("No reliable product price found. Page may require JavaScript or block automated access.")
@@ -51,5 +54,12 @@ class RetailerClient {
         val couponText = doc.select("[class*=coupon], [class*=voucher], [class*=cupon]").map { it.text() }
         val coupons = couponText.filter { it.length in 5..300 }.distinct().take(5)
         return Listing(name, price, reference, coupons)
+    }
+
+    private fun JSONObject.priceValue(): String? {
+        listOf("price", "lowPrice", "highPrice").forEach { key ->
+            opt(key)?.toString()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return optJSONObject("priceSpecification")?.opt("price")?.toString()?.takeIf { it.isNotBlank() }
     }
 }

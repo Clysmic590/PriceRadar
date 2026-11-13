@@ -34,6 +34,12 @@ class PriceLogicTest {
             assertEquals(listOf("Use AUDIO10 at checkout"), result.coupons)
         }
     }
+    @Test fun altexAggregateOfferPriceIsSupported() {
+        val html = """<script type="application/ld+json">{"@type":"Product","name":"Altex phone","offers":{"@type":"AggregateOffer","lowPrice":849.99,"highPrice":1149,"priceCurrency":"RON"}}</script>"""
+        val result = RetailerClient().parse(Jsoup.parse(html), "https://altex.ro/telefon/cpd/PHONE/")
+        assertEquals(84999L, result.price)
+        assertEquals("Altex phone", result.name)
+    }
     @Test fun blockedPageDoesNotInventPrice() {
         assertTrue(runCatching { RetailerClient().parse(Jsoup.parse("<h1>Verify you are human</h1>"), "https://emag.ro/product") }.isFailure)
     }
