@@ -47,6 +47,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -574,7 +577,10 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
                 listOf("Watchlist", "Coupons", "Settings").forEachIndexed { index, title ->
                     val interaction = remember(index) { MutableInteractionSource() }
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxHeight().clickable(
+                        modifier = Modifier.weight(1f).fillMaxHeight().semantics {
+                            selected = highlighted == index
+                            contentDescription = "$title tab"
+                        }.clickable(
                             interactionSource = interaction,
                             indication = null,
                             onClick = { onSelect(index) }
