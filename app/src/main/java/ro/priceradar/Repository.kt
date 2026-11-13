@@ -54,12 +54,22 @@ class Repository private constructor(context: Context) {
         val current = state.value
         state.value = if (current.any { it.id == p.id }) current.map { if (it.id == p.id) p else it } else listOf(p) + current
     }
-    suspend fun add(url: String): String = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+    suspend fun add(url: String, initial: Listing? = null): String = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         val clean = url.trim().substringBefore('#')
         val retailer = Retailer.fromUrl(clean)
         require(state.value.none { it.url == clean }) { "Already tracking this link" }
-        val p = Product(UUID.randomUUID().toString(), clean, retailer, "New ${retailer.label} product")
+        val now = System.currentTimeMillis()
+        val p = Product(UUID.randomUUID().toString(), clean, retailer, initial?.name ?: "New ${retailer.label} product",
+            history = initial?.let { listOf(Observation(now, it.price)) }.orEmpty(), reference = initial?.reference,
+            coupons = initial?.coupons.orEmpty(), checked = if (initial != null) now else 0L)
         save(p); p.id
+    } }
+    suspend fun seed(id: String, listing: Listing) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+        state.value.find { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
+            save(current.copy(name = listing.name, history = current.history + Observation(now, listing.price),
+                reference = listing.reference, coupons = listing.coupons, checked = now, error = null))
+        }
     } }
     suspend fun settings(id: String, target: Long?, drops: Boolean, targets: Boolean, minimumDrop: Int) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         state.value.find { it.id == id }?.let { save(it.copy(target = target, dropAlerts = drops, targetAlerts = targets, minimumDropPercent = minimumDrop.coerceIn(0, 100))) }

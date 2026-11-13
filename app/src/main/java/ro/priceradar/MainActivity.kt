@@ -295,7 +295,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { PageHeading("Your watchlist", watchlistTagline) }
-                    item { WatchOverview(products.size, activeCount, reachedCount) }
+                    item { WatchOverview(products.size, activeCount, reachedCount, failedCount) }
                     item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
                     if (products.isNotEmpty()) item {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -497,14 +497,15 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         confirmButton = { TextButton(onClick = { showAbout = false }) { Text("Done") } }
     )
     if (discovering) ProductSearchDialog(initialQuery = discoveryQuery, initialStore = discoveryStore,
-        onClose = { discovering = false }, onPasteLink = { discovering = false; adding = true }, onTrack = { link ->
+        onClose = { discovering = false }, onPasteLink = { discovering = false; adding = true }, onTrack = { link, initial ->
             discovering = false
             scope.launch {
                 try {
                     val existing = repo.products.value.find { it.url == link.substringBefore('#') }
-                    val id = existing?.id ?: repo.add(link)
+                    val id = existing?.id ?: repo.add(link, initial)
+                    if (existing != null && initial != null) repo.seed(id, initial)
                     discovering = false; selected = id
-                    if (existing == null) refresh(id)
+                    if (initial == null && existing == null) refresh(id)
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     notice = "Could not track product: ${e.message}"

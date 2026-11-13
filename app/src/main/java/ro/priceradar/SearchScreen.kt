@@ -32,7 +32,7 @@ import androidx.compose.ui.window.DialogProperties
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = null, onClose: () -> Unit, onPasteLink: () -> Unit, onTrack: (String) -> Unit) {
+fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = null, onClose: () -> Unit, onPasteLink: () -> Unit, onTrack: (String, Listing?) -> Unit) {
     var query by rememberSaveable { mutableStateOf(initialQuery.take(120)) }
     var selectedStore by rememberSaveable { mutableStateOf(initialStore ?: Retailer.EMAG) }
     var browser by remember { mutableStateOf<Pair<Retailer, String>?>(null) }
@@ -84,7 +84,7 @@ fun ProductSearchDialog(initialQuery: String = "", initialStore: Retailer? = nul
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StoreBrowser(store: Retailer, startUrl: String, onClose: () -> Unit, onTrack: (String) -> Unit) {
+private fun StoreBrowser(store: Retailer, startUrl: String, onClose: () -> Unit, onTrack: (String, Listing?) -> Unit) {
     var currentUrl by remember(startUrl) { mutableStateOf(startUrl) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -97,7 +97,14 @@ private fun StoreBrowser(store: Retailer, startUrl: String, onClose: () -> Unit,
         bottomBar = { Surface(shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) { Column(Modifier.navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { StoreBadge(store); Text(if (isProductUrl(currentUrl, store)) "Product ready to track" else "Open a product result", fontWeight = FontWeight.Bold) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onTrack(currentUrl) }, enabled = isProductUrl(currentUrl, store), modifier = Modifier.weight(1f)) { Text("Track product") }
+                Button(onClick = {
+                    val page = webView
+                    if (store == Retailer.ALTEX && page != null) {
+                        page.evaluateJavascript(ALTEX_LISTING_SCRIPT) { result ->
+                            onTrack(currentUrl, RetailerClient().parseAltexWebResult(result))
+                        }
+                    } else onTrack(currentUrl, null)
+                }, enabled = isProductUrl(currentUrl, store), modifier = Modifier.weight(1f)) { Text("Track product") }
                 OutlinedButton(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl))) }
                         .onFailure { error = "No browser is available" }
@@ -153,4 +160,28 @@ private fun StoreBrowser(store: Retailer, startUrl: String, onClose: () -> Unit,
         }
     }
 }
+
+private val ALTEX_LISTING_SCRIPT = """
+(() => {
+  try {
+    const products = [];
+    const visit = value => {
+      if (Array.isArray(value)) value.forEach(visit);
+      else if (value && typeof value === 'object') {
+        const type = value['@type'];
+        if (type === 'Product' || (Array.isArray(type) && type.includes('Product'))) products.push(value);
+        Object.values(value).forEach(visit);
+      }
+    };
+    document.querySelectorAll('script[type="application/ld+json"]').forEach(node => {
+      try { visit(JSON.parse(node.textContent)); } catch (_) {}
+    });
+    const product = products[0];
+    if (!product) return '';
+    const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
+    const offer = offers.find(Boolean) || {};
+    return JSON.stringify({name: product.name || '', price: offer.price || offer.lowPrice || '', currency: offer.priceCurrency || 'RON', reference: ''});
+  } catch (_) { return ''; }
+})()
+""".trimIndent()
 

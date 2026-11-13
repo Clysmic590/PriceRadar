@@ -16,6 +16,11 @@ class SearchAndMotionTest {
         assertFalse(shouldRefreshCurrencyRates(1_000L, 1_000L + day - 1))
         assertTrue(shouldRefreshCurrencyRates(1_000L, 1_000L + day))
     }
+    @Test fun radarStopsReportingHealthyWhenAnyCheckFailed() {
+        assertEquals("●  PRICERADAR WORKING PARTIALLY", radarStatus(active = 2, failed = 1))
+        assertEquals("●  RADAR ACTIVE", radarStatus(active = 2, failed = 0))
+        assertEquals("RADAR STANDBY", radarStatus(active = 0, failed = 0))
+    }
     @Test fun searchTermsAreEncodedForEveryStore() {
         Retailer.entries.forEach { store ->
             val url = storeSearchUrl(store, "Sony & Samsung / +")

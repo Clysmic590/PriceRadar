@@ -36,8 +36,8 @@ fun PageHeading(title: String, subtitle: String) {
 }
 
 @Composable
-fun WatchOverview(total: Int, active: Int, reached: Int) {
-    val accent = MaterialTheme.colorScheme.primary
+fun WatchOverview(total: Int, active: Int, reached: Int, failed: Int) {
+    val accent = if (failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     val gradient = listOf(
         lerp(Color(0xFF111820), accent, .32f),
         lerp(Color(0xFF10151C), accent, .18f),
@@ -47,13 +47,13 @@ fun WatchOverview(total: Int, active: Int, reached: Int) {
         Column(Modifier.fillMaxWidth().background(Brush.linearGradient(gradient)).border(1.dp, accent.copy(alpha = .38f), RoundedCornerShape(32.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (active > 0) "●  RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelMedium, color = accent)
+                    Text(radarStatus(active, failed), style = MaterialTheme.typography.labelMedium, color = accent)
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("$total", fontSize = 56.sp, lineHeight = 60.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         Text(if (total == 1) "product tracked" else "products tracked", Modifier.padding(bottom = 8.dp), color = Color(0xFFCAD8CC))
                     }
                 }
-                AnimatedRadarOrb(active)
+                AnimatedRadarOrb(active, failed, accent)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OverviewMetric("$active", "Watching", Modifier.weight(1f))
@@ -64,17 +64,30 @@ fun WatchOverview(total: Int, active: Int, reached: Int) {
 }
 
 @Composable
-private fun AnimatedRadarOrb(active: Int) {
+private fun AnimatedRadarOrb(active: Int, failed: Int, accent: Color) {
     val reduced = LocalReducedMotion.current
-    val motion = rememberInfiniteTransition(label = "dashboard radar")
-    val angle by motion.animateFloat(0f, 360f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "radar rotation")
-    val pulse by motion.animateFloat(.9f, 1.08f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "radar pulse")
-    val accent = MaterialTheme.colorScheme.primary
-    Surface(shape = CircleShape, color = accent.copy(alpha = if (active > 0) .16f else .08f), modifier = Modifier
-        .graphicsLayer { scaleX = if (reduced || active == 0) 1f else pulse; scaleY = scaleX }
-        .border(1.dp, accent.copy(alpha=.38f), CircleShape)) {
-        Icon(Icons.Default.Radar, null, Modifier.padding(18.dp).size(38.dp).graphicsLayer { rotationZ = if (reduced || active == 0) 0f else angle }, tint = accent)
+    val animate = !reduced && active > 0 && failed == 0
+    val angle: Float
+    val pulse: Float
+    if (animate) {
+        val motion = rememberInfiniteTransition(label = "dashboard radar")
+        angle = motion.animateFloat(0f, 360f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "radar rotation").value
+        pulse = motion.animateFloat(.9f, 1.08f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "radar pulse").value
+    } else {
+        angle = 0f
+        pulse = 1f
     }
+    Surface(shape = CircleShape, color = accent.copy(alpha = if (active > 0) .16f else .08f), modifier = Modifier
+        .graphicsLayer { scaleX = pulse; scaleY = pulse }
+        .border(1.dp, accent.copy(alpha=.38f), CircleShape)) {
+        Icon(Icons.Default.Radar, null, Modifier.padding(18.dp).size(38.dp).graphicsLayer { rotationZ = angle }, tint = accent)
+    }
+}
+
+internal fun radarStatus(active: Int, failed: Int): String = when {
+    failed > 0 -> "●  PRICERADAR WORKING PARTIALLY"
+    active > 0 -> "●  RADAR ACTIVE"
+    else -> "RADAR STANDBY"
 }
 
 @Composable

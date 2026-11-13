@@ -29,6 +29,9 @@ class RetailerClient {
             .userAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
             .header("Accept", "application/json")
             .header("X-Client-Type", "web")
+            .header("Origin", "https://altex.ro")
+            .referrer("https://altex.ro/")
+            .header("Akamai-BM-Telemetry", "missing-telemetry")
             .ignoreContentType(true).timeout(12000).maxBodySize(1_000_000).execute()
         check(response.statusCode() == 200) { "Altex catalog returned HTTP ${response.statusCode()}" }
         return parseAltexCatalog(response.body())
@@ -49,6 +52,15 @@ class RetailerClient {
         val name = product.optString("name").takeIf { it.isNotBlank() } ?: "Altex product"
         return Listing(name, price, reference, emptyList())
     }
+
+    internal fun parseAltexWebResult(encodedResult: String): Listing? = runCatching {
+        val payload = org.json.JSONTokener(encodedResult).nextValue() as? String ?: return@runCatching null
+        val json = JSONObject(payload)
+        check(json.optString("currency").let { it.isBlank() || it == "RON" })
+        val price = parseMoney(json.opt("price")?.toString().orEmpty()) ?: return@runCatching null
+        val reference = parseMoney(json.opt("reference")?.toString().orEmpty())?.takeIf { it > price }
+        Listing(json.optString("name").ifBlank { "Altex product" }, price, reference, emptyList())
+    }.getOrNull()
     fun parse(doc: Document, url: String): Listing {
         Retailer.fromUrl(url)
         val products = mutableListOf<JSONObject>()

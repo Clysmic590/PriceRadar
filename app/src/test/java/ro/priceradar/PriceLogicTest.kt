@@ -3,6 +3,7 @@ package ro.priceradar
 import org.junit.Assert.*
 import org.junit.Test
 import org.jsoup.Jsoup
+import org.json.JSONObject
 
 class PriceLogicTest {
     @Test fun observedEmagStructuredOffer() {
@@ -46,6 +47,13 @@ class PriceLogicTest {
         assertEquals("Altex phone", result.name)
         assertEquals(84999L, result.price)
         assertEquals(114900L, result.reference)
+    }
+    @Test fun altexWebViewStructuredResultCanSeedTracking() {
+        val encoded = JSONObject.quote("""{"name":"Altex tablet","price":1299.99,"currency":"RON","reference":1499.99}""")
+        val result = RetailerClient().parseAltexWebResult(encoded)!!
+        assertEquals("Altex tablet", result.name)
+        assertEquals(129999L, result.price)
+        assertEquals(149999L, result.reference)
     }
     @Test fun blockedPageDoesNotInventPrice() {
         assertTrue(runCatching { RetailerClient().parse(Jsoup.parse("<h1>Verify you are human</h1>"), "https://emag.ro/product") }.isFailure)
