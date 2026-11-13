@@ -516,8 +516,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
 @Composable
 private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
     val reducedMotion = LocalReducedMotion.current
-    val scope = rememberCoroutineScope()
-    val dragging = pagerState.isScrollInProgress
+    var dragging by remember { mutableStateOf(false) }
+    var draggedPosition by remember { mutableFloatStateOf(0f) }
     Surface(
         modifier = Modifier.navigationBarsPadding().padding(horizontal = 30.dp, vertical = 6.dp),
         shape = RoundedCornerShape(25.dp),
@@ -527,7 +527,8 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
             Modifier.fillMaxWidth().height(66.dp).padding(5.dp)
         ) {
             val segmentWidthPx = constraints.maxWidth / 3f
-            val pagePosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 2f)
+            val pagerPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 2f)
+            val pagePosition = if (dragging) draggedPosition else pagerPosition
             val pillOffset = pagePosition * segmentWidthPx
             val highlighted = pagePosition.roundToInt().coerceIn(0, 2)
             Surface(
@@ -547,28 +548,26 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
             Row(
                 Modifier.fillMaxSize().pointerInput(pagerState, segmentWidthPx) {
                     detectHorizontalDragGestures(
-                        onDragStart = {},
+                        onDragStart = {
+                            dragging = true
+                            draggedPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                                .coerceIn(0f, 2f)
+                        },
                         onDragCancel = {
-                            scope.launch {
-                                val destination = (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceIn(0, 2)
-                                if (reducedMotion) pagerState.scrollToPage(destination) else pagerState.animateScrollToPage(destination)
-                            }
+                            dragging = false
                         },
                         onDragEnd = {
-                            scope.launch {
-                                val destination = (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceIn(0, 2)
-                                if (reducedMotion) pagerState.scrollToPage(destination) else pagerState.animateScrollToPage(destination)
-                            }
+                            val destination = bottomTabForPosition(draggedPosition)
+                            dragging = false
+                            onSelect(destination)
                         }
                     ) { change, amount ->
                         change.consume()
-                        // Pager only accepts raw deltas while it owns an active scroll
-                        // mutation. Drive that mutation explicitly for bottom-bar drags.
-                        scope.launch {
-                            pagerState.scroll {
-                                scrollBy(-amount)
-                            }
-                        }
+                        draggedPosition = bottomTabDragPosition(
+                            current = draggedPosition,
+                            horizontalDeltaPx = amount,
+                            segmentWidthPx = segmentWidthPx
+                        )
                     }
                 }
             ) {
@@ -597,6 +596,13 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
         }
     }
 }
+
+internal fun bottomTabDragPosition(current: Float, horizontalDeltaPx: Float, segmentWidthPx: Float): Float {
+    if (segmentWidthPx <= 0f) return current.coerceIn(0f, 2f)
+    return (current + horizontalDeltaPx / segmentWidthPx).coerceIn(0f, 2f)
+}
+
+internal fun bottomTabForPosition(position: Float): Int = position.roundToInt().coerceIn(0, 2)
 
 @Composable private fun Stat(value: String, label: String, modifier: Modifier) {
     Card(modifier) { Column(Modifier.padding(20.dp)) { Text(value, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.labelLarge) } }

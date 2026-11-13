@@ -41,4 +41,14 @@ class SearchAndMotionTest {
         assertEquals(history.take(3), chartSamples(history.take(3)))
         assertTrue(chartSamples(emptyList()).isEmpty())
     }
+
+    @Test fun bottomNavigationPillFollowsDragAndSettlesOnNearestTab() {
+        assertEquals(0.5f, bottomTabDragPosition(0f, 50f, 100f), 0.0001f)
+        assertEquals(1.75f, bottomTabDragPosition(1f, 75f, 100f), 0.0001f)
+        assertEquals(0f, bottomTabDragPosition(0.2f, -100f, 100f), 0.0001f)
+        assertEquals(2f, bottomTabDragPosition(1.8f, 100f, 100f), 0.0001f)
+        assertEquals(0, bottomTabForPosition(0.49f))
+        assertEquals(1, bottomTabForPosition(0.5f))
+        assertEquals(2, bottomTabForPosition(1.5f))
+    }
 }
