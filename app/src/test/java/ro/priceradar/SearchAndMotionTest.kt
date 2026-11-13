@@ -1,9 +1,21 @@
 package ro.priceradar
 
+import android.content.pm.ActivityInfo
 import org.junit.Assert.*
 import org.junit.Test
 
 class SearchAndMotionTest {
+    @Test fun landscapeIsAvailableOnlyOnLargeScreens() {
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT, orientationForScreen(599))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_USER, orientationForScreen(600))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_USER, orientationForScreen(800))
+    }
+    @Test fun currencyRatesExpireAfterTwentyFourHours() {
+        val day = 24L * 60 * 60 * 1_000
+        assertTrue(shouldRefreshCurrencyRates(0L, day))
+        assertFalse(shouldRefreshCurrencyRates(1_000L, 1_000L + day - 1))
+        assertTrue(shouldRefreshCurrencyRates(1_000L, 1_000L + day))
+    }
     @Test fun searchTermsAreEncodedForEveryStore() {
         Retailer.entries.forEach { store ->
             val url = storeSearchUrl(store, "Sony & Samsung / +")

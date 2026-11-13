@@ -40,6 +40,13 @@ class PriceLogicTest {
         assertEquals(84999L, result.price)
         assertEquals("Altex phone", result.name)
     }
+    @Test fun altexPublicCatalogUsesCurrentInStockOffer() {
+        val json = """{"product":{"name":"Altex phone","offers":[{"stock":{"status":0},"price":{"selling_price":999.99}},{"stock":{"status":1},"price":{"base_price":899.99,"selling_price":849.99,"msrp_price":1149}}]}}"""
+        val result = RetailerClient().parseAltexCatalog(json)
+        assertEquals("Altex phone", result.name)
+        assertEquals(84999L, result.price)
+        assertEquals(114900L, result.reference)
+    }
     @Test fun blockedPageDoesNotInventPrice() {
         assertTrue(runCatching { RetailerClient().parse(Jsoup.parse("<h1>Verify you are human</h1>"), "https://emag.ro/product") }.isFailure)
     }

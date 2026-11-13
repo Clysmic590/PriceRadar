@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -91,10 +92,12 @@ class MainActivity : ComponentActivity() {
     private var openedProduct by mutableStateOf<String?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = orientationForScreen(resources.configuration.smallestScreenWidthDp)
         enableEdgeToEdge()
         shared = sharedUrl(intent)
         openedProduct = intent.getStringExtra("product_id")
         Alerts.schedule(this)
+        CurrencyRates.schedule(this)
         setContent {
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -124,6 +127,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); shared = sharedUrl(intent); openedProduct = intent.getStringExtra("product_id") }
     private fun sharedUrl(intent: Intent) = if (intent.action == Intent.ACTION_SEND) Regex("https://[^\\s]+").find(intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())?.value.orEmpty() else ""
 }
+
+internal fun orientationForScreen(smallestWidthDp: Int): Int =
+    if (smallestWidthDp >= 600) ActivityInfo.SCREEN_ORIENTATION_USER
+    else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -664,7 +671,7 @@ internal fun bottomTabForPosition(position: Float): Int = position.roundToInt().
     val previous = p.history.dropLast(1).lastOrNull()?.price
     val movement = if (previous != null && p.price != null && previous > 0) (p.price!! - previous) * 100.0 / previous else null
     val accent = when { targetMet -> androidx.compose.ui.graphics.Color(0xFFA8F56A); p.error != null -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.primary }
-    Card(onClick = open, modifier = modifier.fillMaxWidth().border(1.dp, accent.copy(alpha = .18f), RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+    Card(onClick = open, modifier = modifier.fillMaxWidth().border(if (p.error != null) 2.dp else 1.dp, accent.copy(alpha = if (p.error != null) .65f else .18f), RoundedCornerShape(28.dp)), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = if (p.error != null) MaterialTheme.colorScheme.errorContainer.copy(alpha = .22f) else MaterialTheme.colorScheme.surfaceContainer)) {
         if (compact) CompactProductCard(p, targetMet, movement, accent, refresh, pause, actionsEnabled)
         else Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -676,6 +683,9 @@ internal fun bottomTabForPosition(position: Float): Int = position.roundToInt().
                 Icon(Icons.Default.ChevronRight, null, Modifier.padding(start = 8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(p.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            p.error?.let {
+                Text("Price check failed · tap refresh to retry", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("CURRENT PRICE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -703,7 +713,7 @@ internal fun bottomTabForPosition(position: Float): Int = position.roundToInt().
                     color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 IconButton(onClick = refresh, enabled = actionsEnabled && !p.paused) {
-                    Icon(Icons.Default.Refresh, "Check price now", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Refresh, "Check price now", tint = if (p.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = pause, enabled = actionsEnabled) {
                     Icon(if (p.paused) Icons.Default.PlayCircle else Icons.Default.PauseCircle,
@@ -737,7 +747,7 @@ private fun CompactProductCard(
                 Text(
                     when {
                         p.paused -> "Paused"
-                        p.error != null -> "Check failed"
+                        p.error != null -> "Price check failed · tap refresh to retry"
                         p.checked == 0L -> "Waiting for first check"
                         else -> "Checked ${relativeStamp(p.checked)}"
                     },
@@ -749,7 +759,7 @@ private fun CompactProductCard(
                 Text("${if (change <= 0) "↓" else "↑"} ${"%.1f".format(kotlin.math.abs(change))}%", color = if (change <= 0) Color(0xFFA8F56A) else MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.width(6.dp))
             }
-            IconButton(onClick = refresh, enabled = actionsEnabled && !p.paused) { Icon(Icons.Default.Refresh, "Check price now", tint = MaterialTheme.colorScheme.primary) }
+            IconButton(onClick = refresh, enabled = actionsEnabled && !p.paused) { Icon(Icons.Default.Refresh, "Check price now", tint = if (p.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
             IconButton(onClick = pause, enabled = actionsEnabled) { Icon(if (p.paused) Icons.Default.PlayCircle else Icons.Default.PauseCircle, if (p.paused) "Resume tracking" else "Pause tracking") }
         }
     }

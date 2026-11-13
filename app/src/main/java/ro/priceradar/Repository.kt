@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import java.util.UUID
 
 class Database(context: Context): SQLiteOpenHelper(context, "prices.db", null, 1) {
@@ -82,7 +85,9 @@ class Repository private constructor(context: Context) {
             var success = true
             candidates.forEach { original ->
                 try {
-                    val listing = RetailerClient().fetch(original.url)
+                    val listing = withTimeout(15_000) {
+                        runInterruptible { RetailerClient().fetch(original.url) }
+                    }
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     mutex.withLock {
                         val latest = state.value.find { it.id == original.id && !it.paused }
@@ -94,11 +99,12 @@ class Repository private constructor(context: Context) {
                         }
                     }
                 } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
                     success = false
                     mutex.withLock {
                         state.value.find { it.id == original.id && !it.paused }?.let { latest ->
-                            save(latest.copy(error = e.message ?: "Refresh failed", checked = System.currentTimeMillis()))
+                            val message = if (e is TimeoutCancellationException) "Price check timed out" else e.message ?: "Price check failed"
+                            save(latest.copy(error = message, checked = System.currentTimeMillis()))
                         }
                     }
                 }
