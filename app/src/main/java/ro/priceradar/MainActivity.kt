@@ -521,6 +521,13 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
     val reducedMotion = LocalReducedMotion.current
     var dragging by remember { mutableStateOf(false) }
     var draggedPosition by remember { mutableFloatStateOf(0f) }
+    var settlingTab by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress, settlingTab) {
+        val target = settlingTab
+        if (target != null && !pagerState.isScrollInProgress && pagerState.settledPage == target) {
+            settlingTab = null
+        }
+    }
     Surface(
         modifier = Modifier.navigationBarsPadding().padding(horizontal = 30.dp, vertical = 6.dp),
         shape = RoundedCornerShape(25.dp),
@@ -531,7 +538,11 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
         ) {
             val segmentWidthPx = constraints.maxWidth / 3f
             val pagerPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 2f)
-            val pagePosition = if (dragging) draggedPosition else pagerPosition
+            val pagePosition = when {
+                dragging -> draggedPosition
+                settlingTab != null -> settlingTab!!.toFloat()
+                else -> pagerPosition
+            }
             val pillOffset = pagePosition * segmentWidthPx
             val highlighted = pagePosition.roundToInt().coerceIn(0, 2)
             Surface(
@@ -552,15 +563,19 @@ private fun RadarBottomBar(pagerState: PagerState, onSelect: (Int) -> Unit) {
                 Modifier.fillMaxSize().pointerInput(pagerState, segmentWidthPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
+                            settlingTab = null
                             dragging = true
                             draggedPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
                                 .coerceIn(0f, 2f)
                         },
                         onDragCancel = {
                             dragging = false
+                            settlingTab = null
                         },
                         onDragEnd = {
                             val destination = bottomTabForPosition(draggedPosition)
+                            draggedPosition = destination.toFloat()
+                            settlingTab = destination
                             dragging = false
                             onSelect(destination)
                         }
