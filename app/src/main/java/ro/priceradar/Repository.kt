@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import java.util.UUID
 
 class Database(context: Context): SQLiteOpenHelper(context, "prices.db", null, 1) {
@@ -94,21 +95,34 @@ class Repository private constructor(context: Context) {
             val candidates = mutex.withLock { state.value.filter { !it.paused && (onlyId == null || it.id == onlyId) } }
             var success = true
             candidates.forEach { original ->
-                try {
-                    val listing = withTimeout(if (original.retailer == Retailer.ALTEX) 25_000 else 15_000) {
-                        if (original.retailer == Retailer.ALTEX) {
-                            runCatching { AltexWebFetcher.fetch(context, original.url) }
-                                .getOrElse { runInterruptible { RetailerClient().fetch(original.url) } }
-                        } else runInterruptible { RetailerClient().fetch(original.url) }
+                var listing: Listing? = null
+                var lastFailure: Exception? = null
+                repeat(2) { attempt ->
+                    if (listing == null) try {
+                        listing = withTimeout(if (original.retailer == Retailer.ALTEX) 30_000 else 20_000) {
+                            // An Activity may use Altex's JS page as a fallback. Background workers
+                            // stay on the public catalog/HTML client instead of creating a headless WebView.
+                            if (original.retailer == Retailer.ALTEX && context is android.app.Activity) {
+                                runCatching { runInterruptible { RetailerClient().fetch(original.url) } }
+                                    .getOrElse { AltexWebFetcher.fetch(context, original.url) }
+                            } else runInterruptible { RetailerClient().fetch(original.url) }
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
+                        lastFailure = e
+                        if (attempt == 0) delay(1_500)
                     }
+                }
+                try {
+                    val fetched = listing ?: throw lastFailure ?: IllegalStateException("Price check failed")
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     mutex.withLock {
                         val latest = state.value.find { it.id == original.id && !it.paused }
                         if (latest != null) {
                             val now = System.currentTimeMillis()
-                            val current = latest.copy(name = listing.name, history = (latest.history + Observation(now, listing.price)).filter { it.time >= now - 366L * 86_400_000 }, reference = listing.reference, coupons = listing.coupons, checked = now, error = null)
+                            val current = latest.copy(name = fetched.name, history = (latest.history + Observation(now, fetched.price)).filter { it.time >= now - 366L * 86_400_000 }, reference = fetched.reference, coupons = fetched.coupons, checked = now, error = null)
                             save(current)
-                            alertReason(latest, listing.price)?.let { message -> runCatching { Alerts.show(context, latest.id, listing.name, message) } }
+                            alertReason(latest, fetched.price)?.let { message -> runCatching { Alerts.show(context, latest.id, fetched.name, message) } }
                         }
                     }
                 } catch (e: Exception) {
@@ -120,6 +134,7 @@ class Repository private constructor(context: Context) {
                             save(latest.copy(error = message, checked = System.currentTimeMillis()))
                         }
                     }
+                    runCatching { Alerts.showFailure(context, original.id, original.name, e.message ?: "The store did not return a usable price") }
                 }
             }
             success
@@ -137,4 +152,5 @@ class Repository private constructor(context: Context) {
         }
     }
 }
+
 
