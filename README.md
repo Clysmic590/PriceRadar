@@ -2,10 +2,15 @@
 
 Native Kotlin / Jetpack Compose Android app with a Material 3 dark interface. Targets Android 17 (API 37); Android 8+ devices can install it.
 
-## Store website search only (unreleased)
+## New in 1.8.0: reliability and watchlist QoL
+- Retries failed retailer checks twice, reports persistent failures, and keeps later scheduled checks alive.
+- Adds improved coupon/price detection, Saved Products as a separate workspace, search history, selectable exports, smart compare shortcuts, battery-management access and adaptive tablet/foldable layouts.
+- Fixes removal-related scrolling and clearly reports when every tracked product is unavailable.
+
+## Store website search only
 Native product-result search and its parser/cache have been removed. Choose eMAG, Vexio or Altex and search its website in the store browser. Tracking the opened product, paste-link import and searching the saved watchlist remain available.
 
-## Vexio fixes (unreleased)
+## Vexio fixes
 - Recognize Vexio's category/brand/product-ID links as trackable products, retaining legacy category/product links and retailer/HTTPS validation.
 - Vexio search returns a JavaScript shell. Selecting Vexio and searching now opens the store's interactive results directly; all-store search offers an explicit Open Vexio results action instead of claiming there are no matches.
 - Refresh the browser's selected URL when navigation finishes and allow website subframes while restricting top-level navigation to the selected retailer.
@@ -119,3 +124,4 @@ Notifications and background scheduling still need on-device Android 17 testing,
 - Search rapidly, switch stores, leave during requests, rotate and retry offline. Confirm no stale results are applied to a new query and no search preview is inserted into history.
 - Populate a large watchlist and dense history, cold-start, scroll/sort/filter, refresh while pausing/removing products, and open charts. Confirm settings/history survive restart and paused/deleted products are not restored by an in-flight refresh.
 - Measure frame times and memory on an actual lower-end phone in both motion modes; responsiveness improvements are implemented but no lag-free claim or device benchmark has been established.
+
