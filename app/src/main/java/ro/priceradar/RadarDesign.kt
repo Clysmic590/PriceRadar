@@ -81,7 +81,7 @@ fun WatchOverview(total: Int, active: Int, reached: Int, failed: Int) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             Box(Modifier.size(7.dp).background(accent, CircleShape))
-                            Text(if (failed > 0) "WORKING PARTIALLY" else if (active > 0) "RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = accent)
+                            Text(if (total > 0 && failed == total) "NOT WORKING" else if (failed > 0) "WORKING PARTIALLY" else if (active > 0) "RADAR ACTIVE" else "RADAR STANDBY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = accent)
                         }
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("$total", fontSize = if (constrained) 40.sp else 46.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold, color = if (lightTheme) MaterialTheme.colorScheme.onSurface else Color.White)
@@ -327,5 +327,6 @@ fun StoreBadge(store: Retailer) {
         Text(store.label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
+
 
 
