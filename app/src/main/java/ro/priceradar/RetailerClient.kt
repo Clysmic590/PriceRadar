@@ -25,10 +25,12 @@ class RetailerClient {
     /** Restored from the earlier Vexio integration; eMAG and Altex do not use this path. */
     private fun fetchVexioLegacy(url: String): Listing {
         val response = Jsoup.connect(url)
-            .userAgent("PriceRadar/1.0 (personal price tracker)")
-            .timeout(20000).maxBodySize(3_000_000).followRedirects(false).execute()
+            .userAgent("Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140 Mobile Safari/537.36 PriceRadar/1.8")
+            .header("Accept-Language", "ro-RO,ro;q=0.9,en;q=0.7")
+            .timeout(30000).maxBodySize(6_000_000).followRedirects(true).execute()
         check(response.statusCode() == 200) { "Vexio returned HTTP ${response.statusCode()}" }
-        return parse(response.parse(), url)
+        check(Retailer.fromUrl(response.url().toString()) == Retailer.VEXIO) { "Vexio redirected outside its store" }
+        return parse(response.parse(), response.url().toString())
     }
 
     private fun fetchAltex(url: String): Listing {
@@ -66,7 +68,8 @@ class RetailerClient {
     }
 
     internal fun parseAltexCatalog(body: String): Listing {
-        val product = JSONObject(body).getJSONObject("product")
+        val root = JSONObject(body)
+        val product = root.getJSONObject("product")
         val offers = product.optJSONArray("offers") ?: error("Altex did not return an offer")
         val offer = (0 until offers.length()).mapNotNull(offers::optJSONObject)
             .firstOrNull { it.optJSONObject("stock")?.optInt("status") in 1..2 }
@@ -78,7 +81,7 @@ class RetailerClient {
         val reference = parseMoney(priceData.opt("msrp_price")?.toString().orEmpty())
             ?.takeIf { it > price }
         val name = product.optString("name").takeIf { it.isNotBlank() } ?: "Altex product"
-        return Listing(name, price, reference, emptyList())
+        return Listing(name, price, reference, couponStrings(root))
     }
 
     internal fun parseAltexWebResult(encodedResult: String): Listing? = runCatching {
@@ -87,8 +90,24 @@ class RetailerClient {
         check(json.optString("currency").let { it.isBlank() || it == "RON" })
         val price = parseMoney(json.opt("price")?.toString().orEmpty()) ?: return@runCatching null
         val reference = parseMoney(json.opt("reference")?.toString().orEmpty())?.takeIf { it > price }
-        Listing(json.optString("name").ifBlank { "Altex product" }, price, reference, emptyList())
+        val coupons = json.optJSONArray("coupons")?.let { array -> List(array.length()) { array.optString(it) } }.orEmpty()
+        Listing(json.optString("name").ifBlank { "Altex product" }, price, reference, coupons)
     }.getOrNull()
+
+    private fun couponStrings(root: Any?): List<String> {
+        val found = linkedSetOf<String>()
+        fun visit(value: Any?, key: String = "") {
+            when (value) {
+                is JSONObject -> value.keys().forEach { child -> visit(value.opt(child), child) }
+                is JSONArray -> for (index in 0 until value.length()) visit(value.opt(index), key)
+                is String -> if (key.contains(Regex("(?i)coupon|voucher|cupon|promo|campaign|discount")) || value.contains(Regex("(?i)cod|cupon|voucher|extra reducere"))) {
+                    value.replace(Regex("\\s+"), " ").trim().takeIf { it.length in 5..300 }?.let(found::add)
+                }
+            }
+        }
+        visit(root)
+        return found.take(8)
+    }
     fun parse(doc: Document, url: String): Listing {
         Retailer.fromUrl(url)
         val products = mutableListOf<JSONObject>()
@@ -116,13 +135,22 @@ class RetailerClient {
         val raw = offer?.priceValue()
             ?: doc.selectFirst("meta[property=product:price:amount], meta[itemprop=price]")?.attr("content")
             ?: doc.selectFirst("[itemprop=price]")?.let { it.attr("content").ifBlank { it.text() } }
+            ?: doc.selectFirst("[data-price], [data-product-price]")?.let { it.attr("data-price").ifBlank { it.attr("data-product-price") } }
+            ?: when (Retailer.fromUrl(url)) {
+                Retailer.EMAG -> doc.selectFirst(".product-new-price, [class*=product-new-price], .product-page-pricing")?.text()
+                Retailer.VEXIO -> doc.selectFirst(".price, .product-price, [class*=price-new]")?.text()
+                Retailer.ALTEX -> doc.selectFirst(".Price-current, .price-current, [class*=Price-current], [class*=price__current]")?.text()
+            }
         val price = raw?.let(::parseMoney) ?: error("No reliable product price found. Page may require JavaScript or block automated access.")
         val name = product?.optString("name")?.takeIf { it.isNotBlank() }
             ?: doc.selectFirst("h1")?.text()?.takeIf { it.isNotBlank() } ?: "Tracked product"
         // Reference prices are only hints, never interpreted as historical observations.
         val reference = doc.selectFirst(".product-old-price, .old-price, .pret-vechi, del[itemprop=price]")?.text()?.let(::parseMoney)
-        val couponText = doc.select("[class*=coupon], [class*=voucher], [class*=cupon]").map { it.text() }
-        val coupons = couponText.filter { it.length in 5..300 }.distinct().take(5)
+        val nodes = doc.select("[class*=coupon], [class*=voucher], [class*=cupon], [id*=coupon], [id*=voucher], [data-testid*=coupon], [data-testid*=voucher]").map { it.text() }
+        val pattern = Regex("(?i)(?:cod|cupon|voucher|extra\\s+reducere|reducere\\s+cu\\s+cod)[^.!?\\n]{0,180}")
+        val couponText = nodes + pattern.findAll(doc.body()?.text().orEmpty()).map { it.value }.toList()
+        val coupons = couponText.map { it.replace(Regex("\\s+"), " ").trim() }
+            .filter { it.length in 5..300 }.distinctBy { it.lowercase() }.take(8)
         return Listing(name, price, reference, coupons)
     }
 
@@ -133,3 +161,4 @@ class RetailerClient {
         return optJSONObject("priceSpecification")?.opt("price")?.toString()?.takeIf { it.isNotBlank() }
     }
 }
+
