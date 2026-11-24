@@ -9,11 +9,14 @@ import java.util.Locale
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
+import java.time.LocalDate
 
 data class ExchangeRates(val rates: Map<String, Double>, val date: String, val fromCache: Boolean)
 
@@ -31,7 +34,11 @@ object CurrencyRates {
         }
 
         val savedAt = preferences.getLong("saved_at", 0L)
-        if (!forceRefresh && !shouldRefreshCurrencyRates(savedAt, System.currentTimeMillis())) cached()?.let { return@withContext it }
+        val today = LocalDate.now().toString()
+        val cachedDateIsCurrent = preferences.getString("date", "").orEmpty() == today
+        if (!forceRefresh && cachedDateIsCurrent && !shouldRefreshCurrencyRates(savedAt, System.currentTimeMillis())) {
+            cached()?.let { return@withContext it }
+        }
 
         runCatching {
             val body = Jsoup.connect("https://api.frankfurter.dev/v1/latest?base=RON&symbols=EUR,USD,GBP")
@@ -42,12 +49,13 @@ object CurrencyRates {
             val json = JSONObject(body)
             val ratesJson = json.getJSONObject("rates")
             val values = supported.associateWith { ratesJson.getDouble(it) }
+            val refreshedDate = today
             preferences.edit().apply {
                 values.forEach { (code, rate) -> putString("rate_$code", rate.toString()) }
-                putString("date", json.optString("date"))
+                putString("date", refreshedDate)
                 putLong("saved_at", System.currentTimeMillis())
             }.apply()
-            ExchangeRates(values, json.optString("date"), false)
+            ExchangeRates(values, refreshedDate, false)
         }.getOrNull() ?: cached()
     }
 
@@ -57,8 +65,15 @@ object CurrencyRates {
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             "currency-rates",
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
+        )
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "currency-rates-startup",
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<CurrencyRateWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
         )
     }
 }
@@ -68,7 +83,7 @@ internal fun shouldRefreshCurrencyRates(savedAt: Long, now: Long): Boolean =
 
 class CurrencyRateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
-        if (CurrencyRates.load(applicationContext, forceRefresh = true) != null) Result.success()
+        if (CurrencyRates.load(applicationContext) != null) Result.success()
         else Result.retry()
 }
 

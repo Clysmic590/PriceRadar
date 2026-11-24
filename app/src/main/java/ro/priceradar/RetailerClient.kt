@@ -12,6 +12,7 @@ class RetailerClient {
     fun fetch(url: String): Listing {
         val retailer = Retailer.fromUrl(url)
         if (retailer == Retailer.ALTEX) return fetchAltex(url)
+        if (retailer == Retailer.VEXIO) return fetchVexioLegacy(url)
         val response = Jsoup.connect(url)
             .userAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
             .header("Accept-Language", "ro-RO,ro;q=0.9,en;q=0.7")
@@ -21,20 +22,47 @@ class RetailerClient {
         return parse(response.parse(), response.url().toString())
     }
 
+    /** Restored from the earlier Vexio integration; eMAG and Altex do not use this path. */
+    private fun fetchVexioLegacy(url: String): Listing {
+        val response = Jsoup.connect(url)
+            .userAgent("PriceRadar/1.0 (personal price tracker)")
+            .timeout(20000).maxBodySize(3_000_000).followRedirects(false).execute()
+        check(response.statusCode() == 200) { "Vexio returned HTTP ${response.statusCode()}" }
+        return parse(response.parse(), url)
+    }
+
     private fun fetchAltex(url: String): Listing {
         val sku = Regex("/cpd/([A-Za-z0-9_-]+)", RegexOption.IGNORE_CASE)
             .find(java.net.URI(url).path.orEmpty())?.groupValues?.get(1)
             ?: error("Invalid Altex product link")
-        val response = Jsoup.connect("https://fenrir.altex.ro/catalog/product/$sku")
-            .userAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
-            .header("Accept", "application/json")
-            .header("X-Client-Type", "web")
-            .header("Origin", "https://altex.ro")
-            .referrer("https://altex.ro/")
-            .header("Akamai-BM-Telemetry", "missing-telemetry")
-            .ignoreContentType(true).timeout(12000).maxBodySize(1_000_000).execute()
-        check(response.statusCode() == 200) { "Altex catalog returned HTTP ${response.statusCode()}" }
-        return parseAltexCatalog(response.body())
+        val catalogAttempt = runCatching {
+            val response = Jsoup.connect("https://fenrir.altex.ro/catalog/product/$sku")
+                .userAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
+                .header("Accept", "application/json")
+                .header("Accept-Language", "ro-RO,ro;q=0.9,en;q=0.7")
+                .header("X-Client-Type", "web")
+                .referrer(url)
+                .ignoreContentType(true).timeout(16000).maxBodySize(1_000_000).execute()
+            check(response.statusCode() == 200) { "catalog HTTP ${response.statusCode()}" }
+            parseAltexCatalog(response.body())
+        }
+        catalogAttempt.getOrNull()?.let { return it }
+
+        // The catalog host occasionally rejects background clients. The public product page
+        // still exposes structured product data, so use it as a safe fallback.
+        return runCatching {
+            val response = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml")
+                .header("Accept-Language", "ro-RO,ro;q=0.9,en;q=0.7")
+                .timeout(20000).maxBodySize(4_000_000).followRedirects(true).execute()
+            check(response.statusCode() == 200) { "page HTTP ${response.statusCode()}" }
+            check(Retailer.fromUrl(response.url().toString()) == Retailer.ALTEX) { "redirected away from Altex" }
+            parse(response.parse(), response.url().toString())
+        }.getOrElse { pageFailure ->
+            val catalogMessage = catalogAttempt.exceptionOrNull()?.message ?: "unknown catalog error"
+            error("Altex check failed ($catalogMessage; ${pageFailure.message ?: "product page unavailable"})")
+        }
     }
 
     internal fun parseAltexCatalog(body: String): Listing {

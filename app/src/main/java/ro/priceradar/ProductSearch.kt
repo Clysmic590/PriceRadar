@@ -12,6 +12,22 @@ fun storeSearchUrl(retailer: Retailer, query: String): String {
     }
 }
 
+/** Removes retailer-specific specs and bundles so another store can match the brand/model. */
+fun crossStoreSearchQuery(productName: String): String {
+    val normalized = productName.replace(Regex("\\s+"), " ").trim()
+    var core = normalized
+        .substringBefore(" + ")
+        .substringBefore(" | ")
+        .substringBefore(',')
+        .substringBefore(';')
+        .replace(Regex("(?i)^(telefon(?:\\s+mobil)?|smartphone|telefon|laptop|televizor|monitor|tableta|tablet|casti|headphones)\\s+"), "")
+        .trim()
+    Regex("(?i)\\b\\d+(?:[.,]\\d+)?\\s*(?:GB|TB|MB)\\b").find(core)?.let { core = core.take(it.range.first).trim() }
+    val colours = "titanium grey|titanium gray|space grey|space gray|midnight black|phantom black|negru|alb|albastru|gri|verde|rosu|auriu|argintiu|black|white|blue|grey|gray|green|red|gold|silver"
+    core = core.replace(Regex("(?i)(?:\\s+(?:$colours))+$"), "").trim()
+    return core.take(80).trim().ifBlank { normalized.take(80) }
+}
+
 fun isProductUrl(url: String, retailer: Retailer): Boolean = runCatching {
     if (Retailer.fromUrl(url) != retailer) return@runCatching false
     val path = URI(url).path.orEmpty()

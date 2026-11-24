@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -20,7 +21,7 @@ fun validatedAccent(argb: Int): Color =
     OneUiAccentPalette.firstOrNull { it.toArgb() == argb } ?: OneUiAccentPalette.first()
 
 @Composable
-fun RadarTheme(oneUiMode: Boolean = true, accent: Color = Color(0xFF4C8DFF), content: @Composable () -> Unit) {
+fun RadarTheme(oneUiMode: Boolean = true, accent: Color = Color(0xFF4C8DFF), darkTheme: Boolean = true, content: @Composable () -> Unit) {
     val radarColors = darkColorScheme(
         primary = Color(0xFFA8C7FF), onPrimary = Color(0xFF092650),
         primaryContainer = Color(0xFFB6D0FF), onPrimaryContainer = Color(0xFF0B2449),
@@ -43,13 +44,24 @@ fun RadarTheme(oneUiMode: Boolean = true, accent: Color = Color(0xFF4C8DFF), con
         surfaceContainer = Color(0xFF171717), surfaceContainerHigh = Color(0xFF202020),
         surfaceContainerHighest = Color(0xFF292929), outlineVariant = Color(0xFF3B3B3B)
     )
+    val oneUiLightColors = lightColorScheme(
+        primary = accent, onPrimary = Color.White,
+        primaryContainer = lerp(Color.White, accent, .18f), onPrimaryContainer = Color(0xFF10213B),
+        background = Color(0xFFF4F6FA), surface = Color.White, onSurface = Color(0xFF171B22),
+        surfaceVariant = Color(0xFFEDF1F7), onSurfaceVariant = Color(0xFF596273),
+        secondary = accent, secondaryContainer = lerp(Color.White, accent, .12f), onSecondaryContainer = Color(0xFF182235),
+        tertiary = accent, tertiaryContainer = lerp(Color.White, accent, .10f),
+        surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFF8F9FC),
+        surfaceContainerHighest = Color(0xFFEDF1F6),
+        outline = Color(0xFFAAB4C2), outlineVariant = Color(0xFFD8DFE9)
+    )
     val typography = Typography().let {
         it.copy(headlineLarge = it.headlineLarge.copy(fontWeight = FontWeight.Bold),
             headlineMedium = it.headlineMedium.copy(fontWeight = FontWeight.Bold))
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalOneUiMode provides oneUiMode) {
         MaterialTheme(
-            colorScheme = if (oneUiMode) oneUiColors else radarColors,
+            colorScheme = if (oneUiMode) { if (darkTheme) oneUiColors else oneUiLightColors } else radarColors,
             shapes = if (oneUiMode) Shapes(
                 small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(18.dp),
                 large = RoundedCornerShape(26.dp), extraLarge = RoundedCornerShape(32.dp)

@@ -161,7 +161,7 @@ private fun StoreBrowser(store: Retailer, startUrl: String, onClose: () -> Unit,
     }
 }
 
-private val ALTEX_LISTING_SCRIPT = """
+internal val ALTEX_LISTING_SCRIPT = """
 (() => {
   try {
     const products = [];

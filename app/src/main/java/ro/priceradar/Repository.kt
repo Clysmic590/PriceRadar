@@ -95,8 +95,11 @@ class Repository private constructor(context: Context) {
             var success = true
             candidates.forEach { original ->
                 try {
-                    val listing = withTimeout(15_000) {
-                        runInterruptible { RetailerClient().fetch(original.url) }
+                    val listing = withTimeout(if (original.retailer == Retailer.ALTEX) 25_000 else 15_000) {
+                        if (original.retailer == Retailer.ALTEX) {
+                            runCatching { AltexWebFetcher.fetch(context, original.url) }
+                                .getOrElse { runInterruptible { RetailerClient().fetch(original.url) } }
+                        } else runInterruptible { RetailerClient().fetch(original.url) }
                     }
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     mutex.withLock {

@@ -3,8 +3,41 @@ package ro.priceradar
 import android.content.pm.ActivityInfo
 import org.junit.Assert.*
 import org.junit.Test
+import java.time.LocalDate
 
 class SearchAndMotionTest {
+    @Test fun blackFridayForegroundIntervalsAreValidated() {
+        assertEquals(listOf(10, 30), BLACK_FRIDAY_INTERVALS)
+        assertEquals(10_000L, blackFridayRefreshMillis(10))
+        assertEquals(30_000L, blackFridayRefreshMillis(30))
+        assertEquals(10_000L, blackFridayRefreshMillis(7))
+    }
+    @Test fun blackFridayScanningStopsOutsideTheForeground() {
+        assertTrue(shouldRunBlackFridayScan(mode = true, foreground = true, busy = false, loading = false, hasActiveProducts = true))
+        assertFalse(shouldRunBlackFridayScan(mode = true, foreground = false, busy = false, loading = false, hasActiveProducts = true))
+        assertFalse(shouldRunBlackFridayScan(mode = true, foreground = true, busy = true, loading = false, hasActiveProducts = true))
+    }
+    @Test fun blackFridayModeOnlyRunsNovemberFirstThroughFifteenth() {
+        assertTrue(isBlackFridayWindow(LocalDate.of(2026, 11, 1)))
+        assertTrue(isBlackFridayWindow(LocalDate.of(2026, 11, 15)))
+        assertFalse(isBlackFridayWindow(LocalDate.of(2026, 10, 31)))
+        assertFalse(isBlackFridayWindow(LocalDate.of(2026, 11, 16)))
+        assertFalse(isBlackFridayWindow(LocalDate.of(2026, 12, 1)))
+    }
+    @Test fun offSeasonBlackFridayPasswordIsExactAndTrimmed() {
+        assertTrue(blackFridayPasswordValid("BLACKFRIDAY"))
+        assertTrue(blackFridayPasswordValid(" BLACKFRIDAY "))
+        assertFalse(blackFridayPasswordValid("blackfriday"))
+        assertFalse(blackFridayPasswordValid("BLACKFRIDAY1"))
+    }
+    @Test fun crossStoreSearchUsesBrandAndModelInsteadOfFullRetailerTitle() {
+        assertEquals(
+            "OPPO Find X10 Pro Max",
+            crossStoreSearchQuery("Telefon mobil OPPO Find X10 Pro Max Titanium Grey 12GB+512GB + Incarcator OPPO 80W SuperVOOC Dual Ports GaN Charger, Alb")
+        )
+        assertEquals("SAMSUNG Galaxy S25 Ultra 5G", crossStoreSearchQuery("Smartphone SAMSUNG Galaxy S25 Ultra 5G 256GB, Black"))
+        assertEquals("ASUS Vivobook 15 X1504VA", crossStoreSearchQuery("Laptop ASUS Vivobook 15 X1504VA, Intel Core i5, 16GB RAM"))
+    }
     @Test fun landscapeIsAvailableOnlyOnLargeScreens() {
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT, orientationForScreen(599))
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_USER, orientationForScreen(600))
