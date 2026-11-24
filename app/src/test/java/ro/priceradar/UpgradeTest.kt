@@ -40,4 +40,12 @@ class UpgradeTest {
         assertTrue(watchlist(products, "", "Altex", WatchSort.NAME, WatchStatus.TARGET_MET).isEmpty())
         assertTrue(watchlist(products, "Speaker", "All", WatchSort.NAME, WatchStatus.FAILED).isEmpty())
     }
+    @Test fun compareStoresDisappearWhenSameProductIsAlreadyTracked() {
+        val emag = base.copy(name = "Samsung Galaxy S25 Ultra 256GB Titanium")
+        val altex = base.copy(id = "altex", url = "https://altex.ro/cpd/ABC", retailer = Retailer.ALTEX, name = "Telefon Samsung Galaxy S25 Ultra 256 GB Titanium")
+        assertEquals(listOf(Retailer.VEXIO), availableCompareStores(emag, listOf(emag, altex)))
+        val vexio = base.copy(id = "vexio", url = "https://vexio.ro/telefon/p", retailer = Retailer.VEXIO, name = "Samsung Galaxy S25 Ultra Titanium 256GB")
+        assertTrue(availableCompareStores(emag, listOf(emag, altex, vexio)).isEmpty())
+    }
 }
+
