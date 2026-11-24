@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -223,6 +224,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     var blackFridayPasswordError by remember { mutableStateOf(false) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    var savedProductsOpen by rememberSaveable { mutableStateOf(false) }
     var discovering by rememberSaveable { mutableStateOf(false) }
     var discoveryQuery by rememberSaveable { mutableStateOf("") }
     var discoveryStore by rememberSaveable { mutableStateOf<Retailer?>(null) }
@@ -237,6 +239,10 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     var status by rememberSaveable { mutableStateOf(WatchStatus.ALL) }
     val displayPreferences = remember { context.getSharedPreferences("performance", android.content.Context.MODE_PRIVATE) }
     var compactCards by remember { mutableStateOf(displayPreferences.getBoolean("compact_watchlist", false)) }
+    var selectingProducts by rememberSaveable { mutableStateOf(false) }
+    var selectedExportIds by remember { mutableStateOf(setOf<String>()) }
+    var exportProducts by remember { mutableStateOf<List<Product>>(emptyList()) }
+    val wideLayout = LocalConfiguration.current.screenWidthDp >= 840
     var showAbout by rememberSaveable { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
     val visible by produceState<List<Product>>(emptyList(), products, query, filter, sort, status) {
@@ -266,21 +272,36 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         if (destination != null) scope.launch {
             notice = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(destination)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(historyCsv(repo.products.value)) }
+                    context.contentResolver.openOutputStream(destination)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(historyCsv(exportProducts.ifEmpty { repo.products.value })) }
                         ?: error("Could not open destination")
                 }
                 "History exported"
             } catch (e: Exception) { "Export failed: ${e.message}" }
         }
     }
+    fun exportHistory(chosen: List<Product>, filename: String) {
+        if (chosen.none { it.history.isNotEmpty() }) { notice = "No price history to export yet"; return }
+        exportProducts = chosen
+        exporter.launch(filename)
+    }
     var notificationsEnabled by remember { mutableStateOf(Alerts.enabled(context)) }
+    var unrestrictedBattery by remember { mutableStateOf(context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) }
     var appInForeground by remember { mutableStateOf(true) }
     fun openNotificationSettings() {
         context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
     }
+    fun openBatterySettings() {
+        val intents = listOf(
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
+        )
+        intents.firstOrNull { it.resolveActivity(context.packageManager) != null }?.let(context::startActivity)
+            ?: run { notice = "Battery settings are not available on this device" }
+    }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notificationsEnabled = Alerts.enabled(context)
+        unrestrictedBattery = context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
         if (!granted) openNotificationSettings()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -313,21 +334,23 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         }
     }
     val product = products.find { it.id == selected }
-    BackHandler(enabled = selected != null) { selected = null }
+    BackHandler(enabled = selected != null || savedProductsOpen) {
+        if (selected != null) selected = null else savedProductsOpen = false
+    }
     if (startupError != null) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) { Text(startupError!!) }
         return
     }
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(if (product == null) "PriceRadar" else "Product radar", fontWeight = FontWeight.Bold) },
-                navigationIcon = { if (product != null) IconButton(onClick = { selected = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            TopAppBar(title = { Text(when { product != null -> "Product radar"; savedProductsOpen -> "Saved products"; else -> "PriceRadar" }, fontWeight = FontWeight.Bold) },
+                navigationIcon = { if (product != null || savedProductsOpen) IconButton(onClick = { if (product != null) selected = null else savedProductsOpen = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = {
                     if (product == null && blackFridayActive) IconButton(onClick = { showQuickSettings = true }) { Icon(Icons.Default.Tune, "Black Friday quick-settings") }
                     IconButton(onClick = { refresh() }, enabled = !busy && !loading) { RefreshIcon(busy) }
                 })
         },
-        bottomBar = { if (product == null) RadarBottomBar(pagerState) { next ->
+        bottomBar = { if (product == null && !savedProductsOpen) RadarBottomBar(pagerState) { next ->
             if (pagerState.settledPage == next) scope.launch {
                 when (next) {
                     0 -> watchScroll.animateScrollToItem(0)
@@ -357,7 +380,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 840.dp)) {
+        Column(Modifier.padding(padding).fillMaxSize().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 1180.dp)) {
             Box(Modifier.fillMaxWidth().height(4.dp)) {
                 if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
@@ -381,23 +404,25 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     ProductDetail(detailProduct,
                         save = { target, drops, targets, minimum -> scope.launch { repo.settings(detailProduct.id, target, drops, targets, minimum) } },
                         pause = { value -> scope.launch { repo.pause(detailProduct.id, value) } },
+                        export = { exportHistory(listOf(detailProduct), "PriceRadar-${detailProduct.retailer.name.lowercase()}-history.csv") },
                         remove = {
                             removedProduct = detailProduct
+                            selected = null
                             scope.launch {
                                 repo.remove(detailProduct.id)
-                                selected = null
                                 notice = "Stopped tracking ${detailProduct.name}"
                             }
                         })
                 } else HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = !savedProductsOpen
                 ) { page -> when (page) {
                 0 -> PullToRefreshBox(isRefreshing = busy, onRefresh = { refresh(null) }, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize(), state = watchScroll, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { PageHeading("Your watchlist", watchlistTagline) }
-                    if (blackFridayActive) item {
+                    if (!savedProductsOpen) item { PageHeading("Your watchlist", watchlistTagline) }
+                    if (!savedProductsOpen && blackFridayActive) item {
                         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.errorContainer) {
                             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Icon(Icons.Default.Bolt, null, tint = MaterialTheme.colorScheme.error)
@@ -405,35 +430,36 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             }
                         }
                     }
-                    item { WatchOverview(products.size, activeCount, reachedCount, failedCount) }
-                    if (products.isNotEmpty()) {
+                    if (!savedProductsOpen) item { WatchOverview(products.size, activeCount, reachedCount, failedCount) }
+                    if (!savedProductsOpen) item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
+                    if (!savedProductsOpen && products.isNotEmpty()) item {
+                        Surface(onClick = { savedProductsOpen = true }, shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                IconTile(Icons.Default.Inventory2)
+                                Column(Modifier.weight(1f)) {
+                                    Text("Saved products", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                    Text("${products.size} tracked · search, sort, export and manage", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    if (!savedProductsOpen && products.isEmpty() && !loading) item { RadarWelcome() }
+                    if (savedProductsOpen) {
+                        item { PageHeading("Saved products", "Everything you track, in one focused place.") }
                         item {
                             Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                                 Column(Modifier.fillMaxWidth()) {
-                                    Surface(
-                                        onClick = { discoveryQuery = ""; discoveryStore = null; discovering = true },
-                                        color = androidx.compose.ui.graphics.Color.Transparent
-                                    ) {
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(18.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                                        ) {
-                                            IconTile(Icons.Default.Search)
-                                            Column(Modifier.weight(1f)) {
-                                                Text("Find a better deal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                                Text("Search eMAG, Vexio & Altex", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                    HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
                                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text("Saved products", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                                                 Text("${visible.size} of ${products.size} shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
+                                            TextButton(onClick = {
+                                                selectingProducts = !selectingProducts
+                                                if (!selectingProducts) selectedExportIds = emptySet()
+                                            }) { Text(if (selectingProducts) "Done" else "Select") }
                                             CompactViewToggle(compactCards) { compact ->
                                                 compactCards = compact
                                                 displayPreferences.edit().putBoolean("compact_watchlist", compact).apply()
@@ -442,6 +468,12 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                             FilledIconButton(onClick = { showFilters = true }, modifier = Modifier.size(42.dp)) {
                                                 Icon(Icons.Default.Tune, "Sort and filter", Modifier.size(19.dp))
                                             }
+                                        }
+                                        if (selectingProducts) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(onClick = { selectedExportIds = visible.map { it.id }.toSet() }, modifier = Modifier.weight(1f)) { Text("Select all") }
+                                            Button(onClick = {
+                                                exportHistory(products.filter { it.id in selectedExportIds }, "PriceRadar-selected-history.csv")
+                                            }, enabled = selectedExportIds.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Export ${selectedExportIds.size}") }
                                         }
                                         TextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
                                             placeholder = { Text("Search your watchlist") }, shape = RoundedCornerShape(22.dp), singleLine = true,
@@ -458,19 +490,34 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                                 AnimatedStoreFilterChip(label, filter == label) { filter = label }
                                             }
                                         }
+                                        if (products.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            FilterChip(selected = status == WatchStatus.ALL, onClick = { status = WatchStatus.ALL }, label = { Text("All ${products.size}") })
+                                            FilterChip(selected = status == WatchStatus.ACTIVE, onClick = { status = WatchStatus.ACTIVE }, label = { Text("Active $activeCount") })
+                                            FilterChip(selected = status == WatchStatus.FAILED, onClick = { status = WatchStatus.FAILED }, label = { Text("Issues $failedCount") })
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    if (products.isEmpty() && !loading) item { RadarWelcome() }
-                    if (products.isNotEmpty() && visible.isEmpty()) item {
+                    if (visible.isEmpty()) item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("No matching products. Try another search or filter.")
                             TextButton(onClick = { query = ""; filter = "All"; status = WatchStatus.ALL }) { Text("Reset filters") }
                         }
                     }
-                    itemsIndexed(visible, key = { _, p -> p.id }, contentType = { _, _ -> "tracked-product" }) { index, p ->
+                    if (wideLayout) items(visible.chunked(2), key = { row -> row.joinToString(":") { it.id } }, contentType = { "tracked-product-row" }) { rowProducts ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
+                            rowProducts.forEach { p -> ProductCard(p, Modifier.weight(1f),
+                                compareStores = availableCompareStores(p, products),
+                                selectedForExport = if (selectingProducts) p.id in selectedExportIds else null,
+                                toggleExport = { selectedExportIds = if (p.id in selectedExportIds) selectedExportIds - p.id else selectedExportIds + p.id },
+                                chooseStore = { store -> discoveryQuery = crossStoreSearchQuery(p.name); discoveryStore = store; discovering = true },
+                                refresh = { refresh(p.id) }, pause = { scope.launch { repo.pause(p.id, !p.paused) } },
+                                actionsEnabled = !busy && !loading, compact = compactCards
+                            ) { if (selectingProducts) selectedExportIds = if (p.id in selectedExportIds) selectedExportIds - p.id else selectedExportIds + p.id else selected = p.id } }
+                            if (rowProducts.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    } else itemsIndexed(visible, key = { _, p -> p.id }, contentType = { _, _ -> "tracked-product" }) { index, p ->
                         var itemShown by remember(p.id) { mutableStateOf(reducedMotion) }
                         LaunchedEffect(p.id) {
                             if (!reducedMotion) delay(index.coerceAtMost(5) * 40L)
@@ -482,12 +529,16 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             label = "watchlist item entrance"
                         )
                         ProductCard(p, Modifier.graphicsLayer { alpha = itemProgress; translationY = (1f - itemProgress) * 28f },
+                            compareStores = availableCompareStores(p, products),
+                            selectedForExport = if (selectingProducts) p.id in selectedExportIds else null,
+                            toggleExport = { selectedExportIds = if (p.id in selectedExportIds) selectedExportIds - p.id else selectedExportIds + p.id },
                             chooseStore = { store -> discoveryQuery = crossStoreSearchQuery(p.name); discoveryStore = store; discovering = true },
                             refresh = { refresh(p.id) },
                             pause = { scope.launch { repo.pause(p.id, !p.paused) } },
                             actionsEnabled = !busy && !loading,
                             compact = compactCards
-                        ) { selected = p.id }
+                        ) { if (selectingProducts) selectedExportIds = if (p.id in selectedExportIds) selectedExportIds - p.id else selectedExportIds + p.id else selected = p.id }
+                    }
                     }
                 }
                 }
@@ -542,6 +593,8 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         item { OneUiSettingsGroup("Price monitoring") {
                             OneUiSettingsRow(Icons.Default.Schedule, "Automatic refresh", "Every $refreshHours ${if (refreshHours == 1) "hour" else "hours"}", { showRefreshSchedule = true })
                             OneUiDivider()
+                            OneUiSettingsRow(Icons.Default.BatterySaver, "Battery management", if (unrestrictedBattery) "Unrestricted · background checks allowed" else "Optimised or restricted · choose PriceRadar", { openBatterySettings() })
+                            OneUiDivider()
                             OneUiSettingsRow(Icons.Default.Bolt, "Black Friday mode", when {
                                 !blackFridayAvailable -> "Available November 1–15"
                                 blackFridayMode -> "On · every ${blackFridayIntervalLabel(blackFridaySeconds)} · tap to change speed"
@@ -568,7 +621,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             }
                         } }
                         item { OneUiSettingsGroup("Data") {
-                            OneUiSettingsRow(Icons.Default.Download, "Export price history", "Save all observations as a CSV file", { exporter.launch("PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
+                            OneUiSettingsRow(Icons.Default.Download, "Export price history", "Save all observations as a CSV file", { exportHistory(products, "PriceRadar-history.csv") }, enabled = products.any { it.history.isNotEmpty() })
                             OneUiDivider()
                             OneUiSettingsRow(Icons.Default.Security, "Privacy", "Watchlist and history stay on this device", { notice = "PriceRadar stores your watchlist locally" })
                         } }
@@ -1042,6 +1095,9 @@ private fun SlidingDisplaySelector(compact: Boolean, onChange: (Boolean) -> Unit
 @Composable private fun ProductCard(
     p: Product,
     modifier: Modifier = Modifier,
+    compareStores: List<Retailer>,
+    selectedForExport: Boolean?,
+    toggleExport: () -> Unit,
     chooseStore: (Retailer) -> Unit,
     refresh: () -> Unit,
     pause: () -> Unit,
@@ -1070,6 +1126,7 @@ private fun SlidingDisplaySelector(compact: Boolean, onChange: (Boolean) -> Unit
         else Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 StoreBadge(p.retailer)
+                if (selectedForExport != null) Checkbox(selectedForExport, onCheckedChange = { toggleExport() }, modifier = Modifier.padding(start = 8.dp))
                 Spacer(Modifier.weight(1f))
                 Surface(shape = RoundedCornerShape(99.dp), color = accent.copy(alpha = .12f)) {
                     Text(when { p.paused -> "PAUSED"; targetMet -> "● TARGET HIT"; p.error != null -> "CHECK FAILED"; else -> "● WATCHING" }, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = accent)
@@ -1095,10 +1152,12 @@ private fun SlidingDisplaySelector(compact: Boolean, onChange: (Boolean) -> Unit
                 Text("${if (change <= 0) "↓" else "↑"} ${"%.1f".format(kotlin.math.abs(change))}%", Modifier.padding(horizontal = 10.dp, vertical = 7.dp), fontWeight = FontWeight.Bold, color = if (change <= 0) androidx.compose.ui.graphics.Color(0xFFA8F56A) else MaterialTheme.colorScheme.error)
             } }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            Text("COMPARE WITH ANOTHER STORE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Retailer.entries.filter { it != p.retailer }.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
+            if (compareStores.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Text("COMPARE WITH ANOTHER STORE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    compareStores.forEach { store -> OutlinedButton(onClick = { chooseStore(store) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) { Text(store.label, style = MaterialTheme.typography.labelMedium) } }
+                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1196,7 +1255,7 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
     }
 }
 
-@Composable private fun ProductDetail(p: Product, save: (Long?, Boolean, Boolean, Int) -> Unit, pause: (Boolean) -> Unit, remove: () -> Unit) {
+@Composable private fun ProductDetail(p: Product, save: (Long?, Boolean, Boolean, Int) -> Unit, pause: (Boolean) -> Unit, export: () -> Unit, remove: () -> Unit) {
     var period by rememberSaveable { mutableStateOf(Period.WEEK) }
     var targetText by rememberSaveable(p.id, p.target) { mutableStateOf(p.target?.let { "%.2f".format(Locale.US, it / 100.0) }.orEmpty()) }
     var drops by rememberSaveable(p.id, p.dropAlerts) { mutableStateOf(p.dropAlerts) }
@@ -1308,6 +1367,9 @@ private fun relativeStamp(time: Long, now: Long = System.currentTimeMillis()): S
             Button(onClick = { save(targetText.takeIf { it.isNotBlank() }?.let(::parseMoney), drops, targets, minimum.toInt()); saved = true }, enabled = targetText.isBlank() || parseMoney(targetText) != null, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Alerts saved" else "Save alerts") }
         } }
         item { InfoCard("Coupon detection", if (p.coupons.isEmpty()) "No public coupon text found. Some offers appear only in the retailer app, account or checkout." else p.coupons.joinToString("\n\n")) }
+        item { OutlinedButton(onClick = export, modifier = Modifier.fillMaxWidth(), enabled = p.history.isNotEmpty()) {
+            Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Export this product and price history")
+        } }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Product actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -1398,6 +1460,7 @@ private fun ProductQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVe
         }
     }
 }
+
 
 
 
