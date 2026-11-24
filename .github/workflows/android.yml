@@ -1,7 +1,7 @@
 name: Android optimized APK
 on:
   push:
-    branches: [main, preview-interactive-navigation]
+    branches: [main, preview-interactive-navigation, fix-1.7.9-qol]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -123,6 +123,7 @@ jobs:
           else:
               subprocess.run(['gh', 'release', 'create', tag, '--verify-tag', '--title', f'PriceRadar {version} — Bug Fix', '--notes-file', '.github/release-notes.md', '--latest', str(apk), str(checksums)], check=True)
           PY
+
 
 
 
