@@ -47,6 +47,9 @@ object Alerts {
             .build()
         manager.notify(id.hashCode(), notification)
     }
+    fun showFailure(context: Context, id: String, title: String, reason: String) {
+        show(context, "failure-$id", "Couldn’t refresh $title", "Tried twice. ${reason.take(160)}")
+    }
     val intervals = listOf(1, 3, 6, 12, 24)
     fun interval(context: Context): Int = context.getSharedPreferences("refresh", Context.MODE_PRIVATE)
         .getInt("hours", 6).takeIf { it in intervals } ?: 6
@@ -67,4 +70,5 @@ object Alerts {
 class PriceWorker(context: Context, params: WorkerParameters): CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = if (Repository.get(applicationContext).refresh(applicationContext)) Result.success() else if (runAttemptCount < 2) Result.retry() else Result.failure()
 }
+
 
