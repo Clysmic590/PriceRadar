@@ -15,6 +15,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import java.util.UUID
 
 class Database(context: Context): SQLiteOpenHelper(context, "prices.db", null, 1) {
@@ -51,12 +55,22 @@ class Repository private constructor(context: Context) {
         val current = state.value
         state.value = if (current.any { it.id == p.id }) current.map { if (it.id == p.id) p else it } else listOf(p) + current
     }
-    suspend fun add(url: String): String = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+    suspend fun add(url: String, initial: Listing? = null): String = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         val clean = url.trim().substringBefore('#')
         val retailer = Retailer.fromUrl(clean)
         require(state.value.none { it.url == clean }) { "Already tracking this link" }
-        val p = Product(UUID.randomUUID().toString(), clean, retailer, "New ${retailer.label} product")
+        val now = System.currentTimeMillis()
+        val p = Product(UUID.randomUUID().toString(), clean, retailer, initial?.name ?: "New ${retailer.label} product",
+            history = initial?.let { listOf(Observation(now, it.price)) }.orEmpty(), reference = initial?.reference,
+            coupons = initial?.coupons.orEmpty(), checked = if (initial != null) now else 0L)
         save(p); p.id
+    } }
+    suspend fun seed(id: String, listing: Listing) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+        state.value.find { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
+            save(current.copy(name = listing.name, history = current.history + Observation(now, listing.price),
+                reference = listing.reference, coupons = listing.coupons, checked = now, error = null))
+        }
     } }
     suspend fun settings(id: String, target: Long?, drops: Boolean, targets: Boolean, minimumDrop: Int) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         state.value.find { it.id == id }?.let { save(it.copy(target = target, dropAlerts = drops, targetAlerts = targets, minimumDropPercent = minimumDrop.coerceIn(0, 100))) }
@@ -64,8 +78,16 @@ class Repository private constructor(context: Context) {
     suspend fun pause(id: String, paused: Boolean) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         state.value.find { it.id == id }?.let { save(it.copy(paused = paused)) }
     } }
+    suspend fun pauseAll(paused: Boolean) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+        state.value.toList().forEach { product ->
+            if (product.paused != paused) save(product.copy(paused = paused))
+        }
+    } }
     suspend fun remove(id: String) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
         db.writableDatabase.delete("products", "id=?", arrayOf(id)); state.value = state.value.filterNot { it.id == id }
+    } }
+    suspend fun restore(product: Product) = withContext(Dispatchers.IO) { initialization.await(); mutex.withLock {
+        if (state.value.none { it.id == product.id }) save(product)
     } }
     suspend fun refresh(context: Context, onlyId: String? = null): Boolean = withContext(Dispatchers.IO) {
         initialization.await()
@@ -73,26 +95,46 @@ class Repository private constructor(context: Context) {
             val candidates = mutex.withLock { state.value.filter { !it.paused && (onlyId == null || it.id == onlyId) } }
             var success = true
             candidates.forEach { original ->
+                var listing: Listing? = null
+                var lastFailure: Exception? = null
+                repeat(2) { attempt ->
+                    if (listing == null) try {
+                        listing = withTimeout(if (original.retailer == Retailer.ALTEX) 30_000 else 20_000) {
+                            // An Activity may use Altex's JS page as a fallback. Background workers
+                            // stay on the public catalog/HTML client instead of creating a headless WebView.
+                            if (original.retailer == Retailer.ALTEX && context is android.app.Activity) {
+                                runCatching { runInterruptible { RetailerClient().fetch(original.url) } }
+                                    .getOrElse { AltexWebFetcher.fetch(context, original.url) }
+                            } else runInterruptible { RetailerClient().fetch(original.url) }
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
+                        lastFailure = e
+                        if (attempt == 0) delay(1_500)
+                    }
+                }
                 try {
-                    val listing = RetailerClient().fetch(original.url)
+                    val fetched = listing ?: throw lastFailure ?: IllegalStateException("Price check failed")
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     mutex.withLock {
                         val latest = state.value.find { it.id == original.id && !it.paused }
                         if (latest != null) {
                             val now = System.currentTimeMillis()
-                            val current = latest.copy(name = listing.name, history = (latest.history + Observation(now, listing.price)).filter { it.time >= now - 366L * 86_400_000 }, reference = listing.reference, coupons = listing.coupons, checked = now, error = null)
+                            val current = latest.copy(name = fetched.name, history = (latest.history + Observation(now, fetched.price)).filter { it.time >= now - 366L * 86_400_000 }, reference = fetched.reference, coupons = fetched.coupons, checked = now, error = null)
                             save(current)
-                            alertReason(latest, listing.price)?.let { message -> runCatching { Alerts.show(context, latest.id, listing.name, message) } }
+                            alertReason(latest, fetched.price)?.let { message -> runCatching { Alerts.show(context, latest.id, fetched.name, message) } }
                         }
                     }
                 } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (e is kotlinx.coroutines.CancellationException && e !is TimeoutCancellationException) throw e
                     success = false
                     mutex.withLock {
                         state.value.find { it.id == original.id && !it.paused }?.let { latest ->
-                            save(latest.copy(error = e.message ?: "Refresh failed", checked = System.currentTimeMillis()))
+                            val message = if (e is TimeoutCancellationException) "Price check timed out" else e.message ?: "Price check failed"
+                            save(latest.copy(error = message, checked = System.currentTimeMillis()))
                         }
                     }
+                    runCatching { Alerts.showFailure(context, original.id, original.name, e.message ?: "The store did not return a usable price") }
                 }
             }
             success
@@ -110,3 +152,5 @@ class Repository private constructor(context: Context) {
         }
     }
 }
+
+

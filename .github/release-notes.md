@@ -1,9 +1,21 @@
-Fixes the immediate startup crash in the optimized 1.3.0 APK.
+## Reliability and watchlist QoL
 
-R8 had removed the public no-argument constructor Room uses to initialize WorkManager's database. The constructor is now explicitly retained. Release publishing is gated on launching the actual optimized APK on an Android 12 tablet emulator, restarting it and rotating the display.
+PriceRadar 1.8.0 makes tracking more resilient and gives saved products their own focused workspace.
 
-Download **PriceRadar-1.3.1.apk** below and install it over 1.3.0. The signing key is unchanged; uninstalling is not required. Android version code: 7. Android 8+ is supported.
+### What changed
 
-Includes all 1.3 features: product-name search, eMAG/Vexio/Altex choices, store-browser tracking, smoother transitions, reduced motion and optimized rendering. Native search remains experimental and uses the store-browser fallback when results are unavailable.
+- Broken listings are attempted twice before PriceRadar reports a persistent failure.
+- Background checks continue on schedule after failures and can notify you when a listing still cannot refresh.
+- eMAG, Vexio and Altex parsing has broader price and coupon detection, with safer Altex background behavior.
+- The dashboard reports **Not working** when every tracked listing fails.
+- Saved Products now has a dedicated screen with search, filters, sorting, Normal/Compact density and multi-selection.
+- Export one product, selected products or everything, including listing details and complete observed price history.
+- Store searches keep a removable recent-history list.
+- Compare shortcuts hide retailers where the same product is already tracked.
+- Added battery-management access and adaptive two-column layouts for tablets and foldables.
+- Fixed the scroll state after removing a product.
 
-Validation: unit tests, release lint, optimized APK build and Android 12 release-APK startup checks. APK checksum is in SHA256SUMS.txt. This is a development-signed sideload build, not a Play Store release.
+Download **PriceRadar-1.8.0.apk** below.
+
+The APK checksum is included in **SHA256SUMS.txt**.
+

@@ -3,6 +3,7 @@ package ro.priceradar
 import org.junit.Assert.*
 import org.junit.Test
 import org.jsoup.Jsoup
+import org.json.JSONObject
 
 class PriceLogicTest {
     @Test fun observedEmagStructuredOffer() {
@@ -33,6 +34,26 @@ class PriceLogicTest {
             assertEquals(39999L, result.reference)
             assertEquals(listOf("Use AUDIO10 at checkout"), result.coupons)
         }
+    }
+    @Test fun altexAggregateOfferPriceIsSupported() {
+        val html = """<script type="application/ld+json">{"@type":"Product","name":"Altex phone","offers":{"@type":"AggregateOffer","lowPrice":849.99,"highPrice":1149,"priceCurrency":"RON"}}</script>"""
+        val result = RetailerClient().parse(Jsoup.parse(html), "https://altex.ro/telefon/cpd/PHONE/")
+        assertEquals(84999L, result.price)
+        assertEquals("Altex phone", result.name)
+    }
+    @Test fun altexPublicCatalogUsesCurrentInStockOffer() {
+        val json = """{"product":{"name":"Altex phone","offers":[{"stock":{"status":0},"price":{"selling_price":999.99}},{"stock":{"status":1},"price":{"base_price":899.99,"selling_price":849.99,"msrp_price":1149}}]}}"""
+        val result = RetailerClient().parseAltexCatalog(json)
+        assertEquals("Altex phone", result.name)
+        assertEquals(84999L, result.price)
+        assertEquals(114900L, result.reference)
+    }
+    @Test fun altexWebViewStructuredResultCanSeedTracking() {
+        val encoded = JSONObject.quote("""{"name":"Altex tablet","price":1299.99,"currency":"RON","reference":1499.99}""")
+        val result = RetailerClient().parseAltexWebResult(encoded)!!
+        assertEquals("Altex tablet", result.name)
+        assertEquals(129999L, result.price)
+        assertEquals(149999L, result.reference)
     }
     @Test fun blockedPageDoesNotInventPrice() {
         assertTrue(runCatching { RetailerClient().parse(Jsoup.parse("<h1>Verify you are human</h1>"), "https://emag.ro/product") }.isFailure)

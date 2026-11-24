@@ -23,6 +23,25 @@ data class Product(
     val dropAlerts: Boolean = true, val targetAlerts: Boolean = true,
     val paused: Boolean = false, val minimumDropPercent: Int = 0
 ) { val price: Long? get() = history.lastOrNull()?.price }
+
+private val identityNoise = setOf("emag", "vexio", "altex", "produs", "nou", "oferta", "cu", "si", "the", "for")
+fun productIdentityTokens(name: String): Set<String> = name.lowercase(java.util.Locale.ROOT)
+    .replace(Regex("[^a-z0-9ăâîșț]+"), " ").split(' ')
+    .filter { it.length >= 3 && it !in identityNoise }.toSet()
+
+fun likelySameProduct(first: Product, second: Product): Boolean {
+    if (first.id == second.id) return true
+    val a = productIdentityTokens(first.name)
+    val b = productIdentityTokens(second.name)
+    if (a.isEmpty() || b.isEmpty()) return false
+    val overlap = a.intersect(b).size
+    return overlap >= 2 && overlap.toDouble() / minOf(a.size, b.size) >= .55
+}
+
+fun availableCompareStores(product: Product, allProducts: List<Product>): List<Retailer> {
+    val alreadyTracked = allProducts.filter { it.id != product.id && likelySameProduct(product, it) }.map { it.retailer }.toSet()
+    return Retailer.entries.filter { it != product.retailer && it !in alreadyTracked }
+}
 enum class WatchSort(val label: String) { RECENT("Recently checked"), PRICE("Lowest price"), NAME("Name"), TARGET("Near target") }
 enum class WatchStatus(val label: String) { ALL("All states"), ACTIVE("Active"), PAUSED("Paused"), TARGET_MET("Target reached"), FAILED("Check failed") }
 fun watchlist(products: List<Product>, query: String, retailer: String, sort: WatchSort, status: WatchStatus = WatchStatus.ALL): List<Product> {
@@ -86,3 +105,4 @@ fun discountAssessment(product: Product, now: Long = System.currentTimeMillis())
     if (reference > low * 1.05 && reference > price) return "Suspicious reference price · above observed 30-day low ${money(low)}"
     return if (price < low) "New observed 30-day low" else "Not below observed 30-day low ${money(low)}"
 }
+
