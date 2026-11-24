@@ -68,7 +68,12 @@ object Alerts {
     }
 }
 class PriceWorker(context: Context, params: WorkerParameters): CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result = if (Repository.get(applicationContext).refresh(applicationContext)) Result.success() else if (runAttemptCount < 2) Result.retry() else Result.failure()
+    override suspend fun doWork(): Result {
+        // Repository performs the requested two attempts per broken product and reports
+        // persistent failures. Finish this period normally so future scheduled checks continue.
+        Repository.get(applicationContext).refresh(applicationContext)
+        return Result.success()
+    }
 }
 
 
