@@ -446,28 +446,36 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                     }
                     if (!savedProductsOpen && products.isEmpty() && !loading) item { RadarWelcome() }
                     if (savedProductsOpen) {
-                        item { PageHeading("Saved products", "Everything you track, in one focused place.") }
+                        item { PageHeading("Saved products", "Everything you track. Clear, quick, and easy to scan.") }
                         item {
-                            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                            Surface(
+                                shape = RoundedCornerShape(28.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .16f), RoundedCornerShape(28.dp))
+                            ) {
                                 Column(Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            IconTile(Icons.Default.Inventory2)
+                                            Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
-                                                Text("Saved products", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                                Text("${visible.size} of ${products.size} shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("${visible.size} products shown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                                Text("${products.size} tracked in total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             TextButton(onClick = {
                                                 selectingProducts = !selectingProducts
                                                 if (!selectingProducts) selectedExportIds = emptySet()
                                             }) { Text(if (selectingProducts) "Done" else "Select") }
+                                        }
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("View", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Spacer(Modifier.weight(1f))
                                             CompactViewToggle(compactCards) { compact ->
                                                 compactCards = compact
                                                 displayPreferences.edit().putBoolean("compact_watchlist", compact).apply()
                                             }
                                             Spacer(Modifier.width(8.dp))
-                                            FilledIconButton(onClick = { showFilters = true }, modifier = Modifier.size(42.dp)) {
-                                                Icon(Icons.Default.Tune, "Sort and filter", Modifier.size(19.dp))
-                                            }
+                                            AnimatedActionIcon(Icons.Default.Tune, "Sort and filter") { showFilters = true }
                                         }
                                         if (selectingProducts) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             OutlinedButton(onClick = { selectedExportIds = visible.map { it.id }.toSet() }, modifier = Modifier.weight(1f)) { Text("Select all") }
@@ -491,9 +499,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                             }
                                         }
                                         if (products.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            FilterChip(selected = status == WatchStatus.ALL, onClick = { status = WatchStatus.ALL }, label = { Text("All ${products.size}") })
-                                            FilterChip(selected = status == WatchStatus.ACTIVE, onClick = { status = WatchStatus.ACTIVE }, label = { Text("Active $activeCount") })
-                                            FilterChip(selected = status == WatchStatus.FAILED, onClick = { status = WatchStatus.FAILED }, label = { Text("Issues $failedCount") })
+                                            AnimatedFilterChip("All ${products.size}", status == WatchStatus.ALL) { status = WatchStatus.ALL }
+                                            AnimatedFilterChip("Active $activeCount", status == WatchStatus.ACTIVE) { status = WatchStatus.ACTIVE }
+                                            AnimatedFilterChip("Issues $failedCount", status == WatchStatus.FAILED) { status = WatchStatus.FAILED }
                                         }
                                     }
                                 }
@@ -985,13 +993,18 @@ internal fun bottomTabForPosition(position: Float): Int = position.roundToInt().
 
 @Composable
 private fun AnimatedStoreFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    AnimatedFilterChip(label, selected, onClick)
+}
+
+@Composable
+private fun AnimatedFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val reducedMotion = LocalReducedMotion.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (pressed && !reducedMotion) .92f else 1f,
-        spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy),
-        label = "store filter press"
+        if (pressed && !reducedMotion) .95f else 1f,
+        spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = .72f),
+        label = "filter press"
     )
     FilterChip(
         selected = selected,
@@ -1003,6 +1016,27 @@ private fun AnimatedStoreFilterChip(label: String, selected: Boolean, onClick: (
 }
 
 @Composable
+private fun AnimatedActionIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
+    val reducedMotion = LocalReducedMotion.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed && !reducedMotion) .9f else 1f,
+        spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = .7f),
+        label = "action icon press"
+    )
+    Surface(
+        onClick = onClick,
+        interactionSource = interaction,
+        modifier = Modifier.size(42.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primary
+    ) {
+        Box(contentAlignment = Alignment.Center) { Icon(icon, description, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary) }
+    }
+}
+
+@Composable
 private fun CompactViewToggle(compact: Boolean, onChange: (Boolean) -> Unit) {
     Surface(
         modifier = Modifier.width(88.dp).height(42.dp),
@@ -1011,9 +1045,18 @@ private fun CompactViewToggle(compact: Boolean, onChange: (Boolean) -> Unit) {
     ) {
         Row(Modifier.padding(3.dp)) {
             listOf(false to Icons.Default.ViewAgenda, true to Icons.Default.ViewList).forEach { (value, icon) ->
+                val interaction = remember(value) { MutableInteractionSource() }
+                val pressed by interaction.collectIsPressedAsState()
+                val reducedMotion = LocalReducedMotion.current
+                val scale by animateFloatAsState(
+                    if (pressed && !reducedMotion) .88f else 1f,
+                    spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = .68f),
+                    label = "view mode press"
+                )
                 Surface(
                     onClick = { onChange(value) },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    interactionSource = interaction,
+                    modifier = Modifier.weight(1f).fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale },
                     shape = RoundedCornerShape(15.dp),
                     color = if (compact == value) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                 ) {

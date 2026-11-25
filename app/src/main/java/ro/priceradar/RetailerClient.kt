@@ -90,7 +90,7 @@ class RetailerClient {
         check(json.optString("currency").let { it.isBlank() || it == "RON" })
         val price = parseMoney(json.opt("price")?.toString().orEmpty()) ?: return@runCatching null
         val reference = parseMoney(json.opt("reference")?.toString().orEmpty())?.takeIf { it > price }
-        val coupons = json.optJSONArray("coupons")?.let { array -> List(array.length()) { array.optString(it) } }.orEmpty()
+        val coupons = cleanCouponTexts(json.optJSONArray("coupons")?.let { array -> List(array.length()) { array.optString(it) } }.orEmpty())
         Listing(json.optString("name").ifBlank { "Altex product" }, price, reference, coupons)
     }.getOrNull()
 
@@ -106,7 +106,7 @@ class RetailerClient {
             }
         }
         visit(root)
-        return found.take(8)
+        return cleanCouponTexts(found)
     }
     fun parse(doc: Document, url: String): Listing {
         Retailer.fromUrl(url)
@@ -147,10 +147,9 @@ class RetailerClient {
         // Reference prices are only hints, never interpreted as historical observations.
         val reference = doc.selectFirst(".product-old-price, .old-price, .pret-vechi, del[itemprop=price]")?.text()?.let(::parseMoney)
         val nodes = doc.select("[class*=coupon], [class*=voucher], [class*=cupon], [id*=coupon], [id*=voucher], [data-testid*=coupon], [data-testid*=voucher]").map { it.text() }
-        val pattern = Regex("(?i)(?:cod|cupon|voucher|extra\\s+reducere|reducere\\s+cu\\s+cod)[^.!?\\n]{0,180}")
+        val pattern = Regex("(?i)(?:cupon|voucher|cod\\s+(?:promo|promotional|de\\s+reducere)|extra\\s+reducere|reducere\\s+cu\\s+cod)[^.!?\\n]{0,140}")
         val couponText = nodes + pattern.findAll(doc.body()?.text().orEmpty()).map { it.value }.toList()
-        val coupons = couponText.map { it.replace(Regex("\\s+"), " ").trim() }
-            .filter { it.length in 5..300 }.distinctBy { it.lowercase() }.take(8)
+        val coupons = cleanCouponTexts(couponText)
         return Listing(name, price, reference, coupons)
     }
 
@@ -160,5 +159,20 @@ class RetailerClient {
         }
         return optJSONObject("priceSpecification")?.opt("price")?.toString()?.takeIf { it.isNotBlank() }
     }
+}
+
+internal fun cleanCouponTexts(candidates: Iterable<String>): List<String> {
+    val promoIntent = Regex("(?i)\\b(cupon|voucher|cod\\s+(?:promo|promotional|de\\s+reducere)|extra\\s+reducere|reducere\\s+cu\\s+cod)\\b")
+    val codeOnly = Regex("^[A-Z0-9][A-Z0-9_-]{3,19}$")
+    val contextualCode = Regex("(?i)\\b(use|folosește|foloseste|aplică|aplica|checkout)\\b.*\\b[A-Z0-9][A-Z0-9_-]{3,19}\\b")
+    val legalOrCheckout = Regex("(?i)cod\\s+(produs|fiscal|de\\s+confirmare)|registrul|capital\\s+social|protectia\\s+consumator|termeni|cardului|cvv|parol|adresa|telefon")
+    return candidates.asSequence()
+        .map { it.replace(Regex("\\s+"), " ").trim() }
+        .filter { it.length in 4..180 }
+        .filterNot { legalOrCheckout.containsMatchIn(it) }
+        .filter { promoIntent.containsMatchIn(it) || codeOnly.matches(it) || contextualCode.containsMatchIn(it) }
+        .distinctBy { it.lowercase() }
+        .take(8)
+        .toList()
 }
 

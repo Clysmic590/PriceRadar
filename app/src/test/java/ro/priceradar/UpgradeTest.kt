@@ -47,5 +47,15 @@ class UpgradeTest {
         val vexio = base.copy(id = "vexio", url = "https://vexio.ro/telefon/p", retailer = Retailer.VEXIO, name = "Samsung Galaxy S25 Ultra Titanium 256GB")
         assertTrue(availableCompareStores(emag, listOf(emag, altex, vexio)).isEmpty())
     }
+    @Test fun couponCleanerRejectsProductAndLegalPageText() {
+        val result = cleanCouponTexts(listOf(
+            "Cod produs: MJR4QZD/A Telefon mobil Apple iPhone",
+            "Cod Fiscal: RO 31962960 Sediu social Strada Oxigenului nr 11 Telefon 0374 477 111",
+            "cod de confirmare din aplicatia Mail atunci cand suni",
+            "Foloseste cod de reducere SAVE10 pentru 10% extra reducere",
+            "BLACKFRIDAY20"
+        ))
+        assertEquals(listOf("Foloseste cod de reducere SAVE10 pentru 10% extra reducere", "BLACKFRIDAY20"), result)
+    }
 }
 

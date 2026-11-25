@@ -237,7 +237,10 @@ internal val ALTEX_LISTING_SCRIPT = """
     const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
     const offer = offers.find(Boolean) || {};
     const couponNodes = [...document.querySelectorAll('[class*="coupon" i],[class*="voucher" i],[class*="cupon" i],[id*="coupon" i],[id*="voucher" i]')];
-    const coupons = [...new Set(couponNodes.map(node => (node.innerText || '').replace(/\s+/g, ' ').trim()).filter(text => text.length >= 5 && text.length <= 300))].slice(0, 8);
+    const promo = /\b(cupon|voucher|cod\s+(promo|promotional|de\s+reducere)|extra\s+reducere|reducere\s+cu\s+cod)\b/i;
+    const blocked = /cod\s+(produs|fiscal|de\s+confirmare)|registrul|capital\s+social|protectia\s+consumator|termeni|cardului|cvv|parol|adresa|telefon/i;
+    const coupons = [...new Set(couponNodes.map(node => (node.innerText || '').replace(/\s+/g, ' ').trim())
+      .filter(text => text.length >= 4 && text.length <= 180 && !blocked.test(text) && (promo.test(text) || /^[A-Z0-9][A-Z0-9_-]{3,19}$/.test(text))))].slice(0, 8);
     return JSON.stringify({name: product.name || '', price: offer.price || offer.lowPrice || '', currency: offer.priceCurrency || 'RON', reference: '', coupons});
   } catch (_) { return ''; }
 })()
