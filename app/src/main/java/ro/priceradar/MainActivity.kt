@@ -49,6 +49,7 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,6 +77,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -455,56 +457,52 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                         }
                     }
                     if (!savedProductsOpen) item { WatchOverview(products.size, activeCount, reachedCount, failedCount) }
-                    if (!savedProductsOpen) item { DiscoveryTile { discoveryQuery = ""; discoveryStore = null; discovering = true } }
-                    if (!savedProductsOpen && products.isNotEmpty()) item {
-                        Surface(onClick = { savedProductsOpen = true }, shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                IconTile(Icons.Default.Inventory2)
-                                Column(Modifier.weight(1f)) {
-                                    Text("Saved products", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                    Text("${products.size} tracked · search, sort, export and manage", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                    if (!savedProductsOpen) item {
+                        WatchlistQuickActions(products.size, wideLayout,
+                            findDeal = { discoveryQuery = ""; discoveryStore = null; discovering = true },
+                            openSaved = { savedProductsOpen = true })
                     }
                     if (!savedProductsOpen && products.isEmpty() && !loading) item { RadarWelcome() }
                     if (savedProductsOpen) {
-                        item { PageHeading("Saved products", "Everything you track. Clear, quick, and easy to scan.") }
                         item {
-                            Surface(
-                                shape = RoundedCornerShape(28.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainer,
-                                modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .16f), RoundedCornerShape(28.dp))
-                            ) {
+                            Column(Modifier.padding(top = 28.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Your collection", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
+                                Text("Prices, stores and alerts—organized your way.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        item {
+                            Surface(shape = RoundedCornerShape(32.dp), color = Color.Transparent) {
+                              Box(Modifier.background(Brush.linearGradient(listOf(
+                                  MaterialTheme.colorScheme.primary.copy(alpha = .15f),
+                                  MaterialTheme.colorScheme.surfaceContainerHigh,
+                                  MaterialTheme.colorScheme.surfaceContainer
+                              ))).border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .24f), RoundedCornerShape(32.dp))) {
                                 Column(Modifier.fillMaxWidth()) {
-                                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            IconTile(Icons.Default.Inventory2)
-                                            Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
-                                                Text("${visible.size} products shown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                                Text("${products.size} tracked in total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("${visible.size} of ${products.size}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                                Text("products shown", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            TextButton(onClick = {
+                                            FilledTonalButton(onClick = {
                                                 reorderingProducts = !reorderingProducts
                                                 selectingProducts = false
                                                 selectedExportIds = emptySet()
                                                 if (reorderingProducts) {
                                                     query = ""; filter = "All"; status = WatchStatus.ALL; sort = WatchSort.CUSTOM
                                                 }
-                                            }) { Text(if (reorderingProducts) "Done" else "Reorder") }
+                                            }, shape = RoundedCornerShape(18.dp)) {
+                                                Icon(if (reorderingProducts) Icons.Default.Done else Icons.Default.SwapVert, null, Modifier.size(18.dp))
+                                                Spacer(Modifier.width(7.dp))
+                                                Text(if (reorderingProducts) "Done" else "Reorder")
+                                            }
                                         }
-                                        AnimatedVisibility(!reorderingProducts) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Text("View", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Spacer(Modifier.weight(1f))
-                                            CompactViewToggle(compactCards) { compact ->
+                                        AnimatedVisibility(!reorderingProducts) {
+                                            HyperViewControls(compactCards, { compact ->
                                                 compactCards = compact
                                                 displayPreferences.edit().putBoolean("compact_watchlist", compact).apply()
-                                            }
-                                            Spacer(Modifier.width(8.dp))
-                                            AnimatedActionIcon(Icons.Default.Tune, "Sort and filter") { showFilters = true }
-                                        } }
+                                            }, { showFilters = true })
+                                        }
                                         AnimatedVisibility(reorderingProducts) {
                                             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)) {
                                                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -529,18 +527,25 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                             ),
                                             leadingIcon = { Icon(Icons.Default.Search, null) },
                                             trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
-                                        AnimatedVisibility(!reorderingProducts) { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        AnimatedVisibility(!reorderingProducts) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                          SavedSectionLabel("STORE")
+                                          Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             (listOf("All") + Retailer.entries.map { it.label }).forEach { label ->
                                                 AnimatedStoreFilterChip(label, filter == label) { filter = label }
                                             }
+                                          }
                                         } }
-                                        if (products.isNotEmpty() && !reorderingProducts) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (products.isNotEmpty() && !reorderingProducts) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                          SavedSectionLabel("STATUS")
+                                          Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             AnimatedFilterChip("All ${products.size}", status == WatchStatus.ALL) { status = WatchStatus.ALL }
                                             AnimatedFilterChip("Active $activeCount", status == WatchStatus.ACTIVE) { status = WatchStatus.ACTIVE }
                                             AnimatedFilterChip("Issues $failedCount", status == WatchStatus.FAILED) { status = WatchStatus.FAILED }
+                                          }
                                         }
                                     }
                                 }
+                              }
                             }
                         }
                     if (visible.isEmpty()) item {
@@ -1075,6 +1080,50 @@ private fun AnimatedActionIcon(icon: androidx.compose.ui.graphics.vector.ImageVe
 }
 
 @Composable
+private fun SavedSectionLabel(text: String) {
+    Text(text, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
+private fun HyperViewControls(compact: Boolean, onChange: (Boolean) -> Unit, openSort: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .88f),
+            modifier = Modifier.weight(1f).height(52.dp)
+        ) {
+            Row(Modifier.padding(4.dp)) {
+                listOf(false to "Comfortable", true to "Compact").forEach { (value, label) ->
+                    val interaction = remember(value) { MutableInteractionSource() }
+                    val pressed by interaction.collectIsPressedAsState()
+                    val scale by animateFloatAsState(if (pressed) .95f else 1f, spring(stiffness = Spring.StiffnessMediumLow), label = "view press")
+                    Surface(
+                        onClick = { onChange(value) },
+                        interactionSource = interaction,
+                        modifier = Modifier.weight(1f).fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale },
+                        shape = RoundedCornerShape(17.dp),
+                        color = if (compact == value) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                    ) {
+                        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (value) Icons.Default.ViewList else Icons.Default.ViewAgenda, null, Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+        Surface(
+            onClick = openSort,
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Tune, "Sort and filter") } }
+    }
+}
+
+@Composable
 private fun CompactViewToggle(compact: Boolean, onChange: (Boolean) -> Unit) {
     Surface(
         modifier = Modifier.width(88.dp).height(42.dp),
@@ -1186,6 +1235,35 @@ private fun ReorderProductRow(p: Product, canMoveUp: Boolean, canMoveDown: Boole
             IconButton(onClick = moveUp, enabled = canMoveUp) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
             IconButton(onClick = moveDown, enabled = canMoveDown) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
         }
+    }
+}
+
+@Composable
+private fun WatchlistQuickActions(productCount: Int, wide: Boolean, findDeal: () -> Unit, openSaved: () -> Unit) {
+    @Composable fun ActionTile(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+        Surface(
+            onClick = onClick,
+            modifier = modifier,
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .15f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                IconTile(icon)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.Default.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+    if (wide && productCount > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        ActionTile(Icons.Default.Search, "Find a better deal", "Search every supported store", findDeal, Modifier.weight(1f))
+        ActionTile(Icons.Default.Inventory2, "Saved products", "$productCount tracked · organize and manage", openSaved, Modifier.weight(1f))
+    } else Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ActionTile(Icons.Default.Search, "Find a better deal", "Search eMAG, Vexio & Altex", findDeal)
+        if (productCount > 0) ActionTile(Icons.Default.Inventory2, "Saved products", "$productCount tracked · organize and manage", openSaved)
     }
 }
 
