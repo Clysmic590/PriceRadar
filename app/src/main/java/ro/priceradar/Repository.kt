@@ -100,11 +100,13 @@ class Repository private constructor(context: Context) {
                 repeat(2) { attempt ->
                     if (listing == null) try {
                         listing = withTimeout(if (original.retailer == Retailer.ALTEX) 30_000 else 20_000) {
-                            // An Activity may use Altex's JS page as a fallback. Background workers
-                            // stay on the public catalog/HTML client instead of creating a headless WebView.
+                            // Foreground Altex checks must start with the rendered product page.
+                            // Its HTTP catalog + HTML fallbacks can together outlive this timeout,
+                            // which previously prevented the WebView path from ever being reached.
+                            // Background workers cannot host a WebView, so they keep using HTTP.
                             if (original.retailer == Retailer.ALTEX && context is android.app.Activity) {
-                                runCatching { runInterruptible { RetailerClient().fetch(original.url) } }
-                                    .getOrElse { AltexWebFetcher.fetch(context, original.url) }
+                                runCatching { AltexWebFetcher.fetch(context, original.url) }
+                                    .getOrElse { runInterruptible { RetailerClient().fetch(original.url) } }
                             } else runInterruptible { RetailerClient().fetch(original.url) }
                         }
                     } catch (e: Exception) {
