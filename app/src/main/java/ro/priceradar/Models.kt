@@ -42,7 +42,7 @@ fun availableCompareStores(product: Product, allProducts: List<Product>): List<R
     val alreadyTracked = allProducts.filter { it.id != product.id && likelySameProduct(product, it) }.map { it.retailer }.toSet()
     return Retailer.entries.filter { it != product.retailer && it !in alreadyTracked }
 }
-enum class WatchSort(val label: String) { RECENT("Recently checked"), PRICE("Lowest price"), NAME("Name"), TARGET("Near target") }
+enum class WatchSort(val label: String) { CUSTOM("My order"), RECENT("Recently checked"), PRICE("Lowest price"), NAME("Name"), TARGET("Near target") }
 enum class WatchStatus(val label: String) { ALL("All states"), ACTIVE("Active"), PAUSED("Paused"), TARGET_MET("Target reached"), FAILED("Check failed") }
 fun watchlist(products: List<Product>, query: String, retailer: String, sort: WatchSort, status: WatchStatus = WatchStatus.ALL): List<Product> {
     val filtered = products.filter { (retailer == "All" || it.retailer.label == retailer) && (it.name.contains(query.trim(), true) || it.retailer.label.contains(query.trim(), true)) }
@@ -54,6 +54,7 @@ fun watchlist(products: List<Product>, query: String, retailer: String, sort: Wa
         WatchStatus.FAILED -> p.error != null
     } }
     return when (sort) {
+        WatchSort.CUSTOM -> matching
         WatchSort.RECENT -> matching.sortedByDescending { it.checked }
         WatchSort.PRICE -> matching.sortedBy { it.price ?: Long.MAX_VALUE }
         WatchSort.NAME -> matching.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }

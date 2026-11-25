@@ -240,13 +240,27 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
     val displayPreferences = remember { context.getSharedPreferences("performance", android.content.Context.MODE_PRIVATE) }
     var compactCards by remember { mutableStateOf(displayPreferences.getBoolean("compact_watchlist", false)) }
     var selectingProducts by rememberSaveable { mutableStateOf(false) }
+    var reorderingProducts by rememberSaveable { mutableStateOf(false) }
+    var customProductOrder by remember {
+        mutableStateOf(displayPreferences.getString("custom_product_order", "").orEmpty().split('|').filter { it.isNotBlank() })
+    }
     var selectedExportIds by remember { mutableStateOf(setOf<String>()) }
     var exportProducts by remember { mutableStateOf<List<Product>>(emptyList()) }
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 840
     var showAbout by rememberSaveable { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
-    val visible by produceState<List<Product>>(emptyList(), products, query, filter, sort, status) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(products, query, filter, sort, status) }
+    LaunchedEffect(products.map { it.id }) {
+        val currentIds = products.map { it.id }
+        val normalized = customProductOrder.filter { it in currentIds } + currentIds.filter { it !in customProductOrder }
+        if (normalized != customProductOrder) customProductOrder = normalized
+        displayPreferences.edit().putString("custom_product_order", normalized.joinToString("|")).apply()
+    }
+    val orderedProducts = remember(products, customProductOrder) {
+        val positions = customProductOrder.withIndex().associate { it.value to it.index }
+        products.sortedBy { positions[it.id] ?: Int.MAX_VALUE }
+    }
+    val visible by produceState<List<Product>>(emptyList(), orderedProducts, query, filter, sort, status) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { watchlist(orderedProducts, query, filter, sort, status) }
     }
     val couponProducts = remember(products) { products.filter { it.coupons.isNotEmpty() } }
     val activeCount = remember(products) { products.count { !it.paused } }
@@ -283,6 +297,16 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         if (chosen.none { it.history.isNotEmpty() }) { notice = "No price history to export yet"; return }
         exportProducts = chosen
         exporter.launch(filename)
+    }
+    fun moveProduct(id: String, offset: Int) {
+        val order = customProductOrder.toMutableList()
+        val from = order.indexOf(id)
+        val to = (from + offset).coerceIn(0, order.lastIndex)
+        if (from >= 0 && from != to) {
+            java.util.Collections.swap(order, from, to)
+            customProductOrder = order
+            displayPreferences.edit().putString("custom_product_order", order.joinToString("|")).apply()
+        }
     }
     var notificationsEnabled by remember { mutableStateOf(Alerts.enabled(context)) }
     var unrestrictedBattery by remember { mutableStateOf(context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) }
@@ -380,7 +404,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 1180.dp)) {
+        Column(Modifier.padding(padding).fillMaxSize().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 900.dp)) {
             Box(Modifier.fillMaxWidth().height(4.dp)) {
                 if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
@@ -463,11 +487,15 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                                 Text("${products.size} tracked in total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             TextButton(onClick = {
-                                                selectingProducts = !selectingProducts
-                                                if (!selectingProducts) selectedExportIds = emptySet()
-                                            }) { Text(if (selectingProducts) "Done" else "Select") }
+                                                reorderingProducts = !reorderingProducts
+                                                selectingProducts = false
+                                                selectedExportIds = emptySet()
+                                                if (reorderingProducts) {
+                                                    query = ""; filter = "All"; status = WatchStatus.ALL; sort = WatchSort.CUSTOM
+                                                }
+                                            }) { Text(if (reorderingProducts) "Done" else "Reorder") }
                                         }
-                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        AnimatedVisibility(!reorderingProducts) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text("View", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             Spacer(Modifier.weight(1f))
                                             CompactViewToggle(compactCards) { compact ->
@@ -476,6 +504,14 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                             }
                                             Spacer(Modifier.width(8.dp))
                                             AnimatedActionIcon(Icons.Default.Tune, "Sort and filter") { showFilters = true }
+                                        } }
+                                        AnimatedVisibility(reorderingProducts) {
+                                            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)) {
+                                                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                    Icon(Icons.Default.DragHandle, null, tint = MaterialTheme.colorScheme.primary)
+                                                    Text("Choose where each product appears. Your order is saved automatically.", style = MaterialTheme.typography.bodySmall)
+                                                }
+                                            }
                                         }
                                         if (selectingProducts) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             OutlinedButton(onClick = { selectedExportIds = visible.map { it.id }.toSet() }, modifier = Modifier.weight(1f)) { Text("Select all") }
@@ -483,7 +519,7 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                                 exportHistory(products.filter { it.id in selectedExportIds }, "PriceRadar-selected-history.csv")
                                             }, enabled = selectedExportIds.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Export ${selectedExportIds.size}") }
                                         }
-                                        TextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
+                                        AnimatedVisibility(!reorderingProducts) { TextField(query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
                                             placeholder = { Text("Search your watchlist") }, shape = RoundedCornerShape(22.dp), singleLine = true,
                                             colors = TextFieldDefaults.colors(
                                                 focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -492,13 +528,13 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                                                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                                             ),
                                             leadingIcon = { Icon(Icons.Default.Search, null) },
-                                            trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } })
-                                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") } }) }
+                                        AnimatedVisibility(!reorderingProducts) { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             (listOf("All") + Retailer.entries.map { it.label }).forEach { label ->
                                                 AnimatedStoreFilterChip(label, filter == label) { filter = label }
                                             }
-                                        }
-                                        if (products.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        } }
+                                        if (products.isNotEmpty() && !reorderingProducts) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             AnimatedFilterChip("All ${products.size}", status == WatchStatus.ALL) { status = WatchStatus.ALL }
                                             AnimatedFilterChip("Active $activeCount", status == WatchStatus.ACTIVE) { status = WatchStatus.ACTIVE }
                                             AnimatedFilterChip("Issues $failedCount", status == WatchStatus.FAILED) { status = WatchStatus.FAILED }
@@ -513,7 +549,9 @@ fun PriceRadar(shared: String, openedProduct: String?, opened: () -> Unit, chang
                             TextButton(onClick = { query = ""; filter = "All"; status = WatchStatus.ALL }) { Text("Reset filters") }
                         }
                     }
-                    if (wideLayout) items(visible.chunked(2), key = { row -> row.joinToString(":") { it.id } }, contentType = { "tracked-product-row" }) { rowProducts ->
+                    if (reorderingProducts) itemsIndexed(visible, key = { _, p -> "reorder-${p.id}" }) { index, p ->
+                        ReorderProductRow(p, index > 0, index < visible.lastIndex, { moveProduct(p.id, -1) }, { moveProduct(p.id, 1) })
+                    } else if (wideLayout) items(visible.chunked(2), key = { row -> row.joinToString(":") { it.id } }, contentType = { "tracked-product-row" }) { rowProducts ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                             rowProducts.forEach { p -> ProductCard(p, Modifier.weight(1f),
                                 compareStores = availableCompareStores(p, products),
@@ -1125,6 +1163,28 @@ private fun SlidingDisplaySelector(compact: Boolean, onChange: (Boolean) -> Unit
                     Text(title, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ReorderProductRow(p: Product, canMoveUp: Boolean, canMoveDown: Boolean, moveUp: () -> Unit, moveDown: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f), RoundedCornerShape(24.dp))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.DragHandle, "Reorder product", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+            StoreBadge(p.retailer)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(p.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(p.price?.let(::money) ?: "No price yet", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = moveUp, enabled = canMoveUp) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
+            IconButton(onClick = moveDown, enabled = canMoveDown) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
         }
     }
 }
